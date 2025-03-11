@@ -50,3 +50,19 @@ Then, run a client with target as loopback address:
 ```
 
 You will see that client receives "Hello, world!" from the server.
+
+### mDNS
+
+Source code from public domain [mDNS](https://github.com/mjansson/mdns) header-only implementation, along with its example code.
+
+```sh
+# start mDNS service
+./build/main mdns --service
+
+# query an mDNS host
+./build/main mdns --query <hostname>
+./build/main mdns --query _test-mdns._tcp.local.
+
+# discovery services
+./build/main mdns --discovery
+```
