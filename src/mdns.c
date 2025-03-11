@@ -1229,7 +1229,6 @@ int mdns_main(int argc, const char* const* argv) {
 
   SetConsoleCtrlHandler(console_handler, TRUE);
 #else
-
   char hostname_buffer[256];
   size_t hostname_size = sizeof(hostname_buffer);
   if (gethostname(hostname_buffer, hostname_size) == 0)
