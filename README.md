@@ -51,6 +51,20 @@ Then, run a client with target as loopback address:
 
 You will see that client receives "Hello, world!" from the server.
 
+### Datagram Sockets
+
+First, launch a server that listens for UDP packets at a specific port:
+
+```sh
+./build/main listener
+```
+
+Then, you can send a packet there:
+
+```sh
+./build/main talker ::1 "hi there whats up?"
+```
+
 ### mDNS
 
 Source code from public domain [mDNS](https://github.com/mjansson/mdns) header-only implementation, along with its example code.
