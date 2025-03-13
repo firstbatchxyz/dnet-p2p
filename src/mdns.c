@@ -897,11 +897,12 @@ static int service_mdns(const char* hostname, const char* service_name,
     return -1;
   }
 
+  // Append a '.' to the service name if it does not end with one
   char* service_name_buffer = malloc(service_name_length + 2);
   memcpy(service_name_buffer, service_name, service_name_length);
   if (service_name_buffer[service_name_length - 1] != '.')
     service_name_buffer[service_name_length++] = '.';
-  service_name_buffer[service_name_length] = 0;
+  service_name_buffer[service_name_length] = 0;  // null-terminate
   service_name = service_name_buffer;
 
   printf("Service mDNS: %s:%d\n", service_name, service_port);
@@ -1260,6 +1261,7 @@ int mdns_main(int argc, const char* const* argv) {
             record_type = MDNS_RECORDTYPE_A;
           else if (strcmp(query[query_count].name, "AAAA") == 0)
             record_type = MDNS_RECORDTYPE_AAAA;
+
           if (record_type != 0) {
             query[query_count].type = record_type;
             query[query_count].name = argv[iarg++];

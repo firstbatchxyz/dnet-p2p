@@ -1,4 +1,4 @@
-# DLLM
+# `dllmd`: dLLM Daemon
 
 An application that creates a peer-to-peer network on LAN where nodes:
 
@@ -31,12 +31,12 @@ An application that creates a peer-to-peer network on LAN where nodes:
 - Disk space
 - System uptime
 
-## DLLM Daemon
+## Usage
+
+We start the daemon with:
 
 ```sh
 dllmd
 ```
 
-> [!NOTE]
->
-> `dllmd` stands for dLLM daemon.
+At first launch, we check the local network and see if there is anyone else; otherwise we launch a server.

@@ -19,33 +19,32 @@
 #define LISTENER_MAXBUFLEN 100
 
 int listener_main(void) {
-  int sockfd;
-  struct addrinfo hints, *servinfo, *p;
-  int rv;
-  int numbytes;
-  struct sockaddr_storage their_addr;
   char buf[LISTENER_MAXBUFLEN];
-  socklen_t addr_len;
-  char s[INET6_ADDRSTRLEN];
 
+  struct addrinfo hints;
   memset(&hints, 0, sizeof hints);
-  hints.ai_family = AF_INET6;  // set to AF_INET to use IPv4
+  hints.ai_family = AF_INET6;  // or, set to AF_INET to use IPv4
   hints.ai_socktype = SOCK_DGRAM;
   hints.ai_flags = AI_PASSIVE;  // use my IP
 
+  struct addrinfo *servinfo;
+  int rv;
   if ((rv = getaddrinfo(NULL, LISTENER_MYPORT, &hints, &servinfo)) != 0) {
     fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
     return 1;
   }
 
   // loop through all the results and bind to the first we can
-  for (p = servinfo; p != NULL; p = p->ai_next) {
-    if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
+  int sockfd;
+  struct addrinfo *conn;
+  for (conn = servinfo; conn != NULL; conn = conn->ai_next) {
+    if ((sockfd = socket(conn->ai_family, conn->ai_socktype,
+                         conn->ai_protocol)) == -1) {
       perror("listener: socket");
       continue;
     }
 
-    if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
+    if (bind(sockfd, conn->ai_addr, conn->ai_addrlen) == -1) {
       close(sockfd);
       perror("listener: bind");
       continue;
@@ -54,7 +53,7 @@ int listener_main(void) {
     break;
   }
 
-  if (p == NULL) {
+  if (conn == NULL) {
     fprintf(stderr, "listener: failed to bind socket\n");
     return 2;
   }
@@ -62,7 +61,9 @@ int listener_main(void) {
   freeaddrinfo(servinfo);
 
   printf("listener: waiting to recvfrom...\n");
-
+  int numbytes;  // number of bytes received
+  struct sockaddr_storage their_addr;
+  socklen_t addr_len;
   addr_len = sizeof their_addr;
   if ((numbytes = recvfrom(sockfd, buf, LISTENER_MAXBUFLEN - 1, 0,
                            (struct sockaddr *)&their_addr, &addr_len)) == -1) {
@@ -70,9 +71,11 @@ int listener_main(void) {
     exit(1);
   }
 
+  char server_addr[INET6_ADDRSTRLEN];
   printf("listener: got packet from %s\n",
          inet_ntop(their_addr.ss_family,
-                   get_in_addr((struct sockaddr *)&their_addr), s, sizeof s));
+                   get_in_addr((struct sockaddr *)&their_addr), server_addr,
+                   sizeof server_addr));
   printf("listener: packet is %d bytes long\n", numbytes);
   buf[numbytes] = '\0';
   printf("listener: packet contains \"%s\"\n", buf);

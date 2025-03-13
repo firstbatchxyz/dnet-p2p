@@ -65,6 +65,8 @@ Then, you can send a packet there:
 ./build/main talker ::1 "hi there whats up?"
 ```
 
+Note that since `talker` is using UDP, you can technically send to any host and the program wont fail.
+
 ### mDNS
 
 Source code from public domain [mDNS](https://github.com/mjansson/mdns) header-only implementation, along with its example code.

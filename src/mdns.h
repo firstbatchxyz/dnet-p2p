@@ -44,6 +44,7 @@ extern "C" {
   ((const void*)((const char*)(p) + (ptrdiff_t)(ofs)))
 #define MDNS_POINTER_DIFF(a, b) ((size_t)((const char*)(a) - (const char*)(b)))
 
+// this is the port defined by RFC
 #define MDNS_PORT 5353
 #define MDNS_UNICAST_RESPONSE 0x8000U
 #define MDNS_CACHE_FLUSH 0x8000U
@@ -843,6 +844,7 @@ static inline int mdns_multicast_send(int sock, const void* buffer,
 #ifdef __APPLE__
     addr6.sin6_len = sizeof(addr6);
 #endif
+    // use address FF02::FB for multicast, as per the RFC
     addr6.sin6_addr.s6_addr[0] = 0xFF;
     addr6.sin6_addr.s6_addr[1] = 0x02;
     addr6.sin6_addr.s6_addr[15] = 0xFB;
