@@ -15,6 +15,9 @@
 // mdns example
 #include "mdns.h"
 
+// dllm dameon
+#include "dllmd.h"
+
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     fprintf(stderr, "usage: %s [showip|client|server] [args...]\n", argv[0]);
@@ -33,6 +36,8 @@ int main(int argc, char *argv[]) {
     return listener_main();
   } else if (strcmp(argv[1], "talker") == 0) {
     return talker_main(argc - 1, &argv[1]);
+  } else if (strcmp(argv[1], "dllmd") == 0) {
+    return dllmd_main(argc - 1, &argv[1]);
   } else {
     fprintf(stderr, "unknown program: %s\n", argv[1]);
     return 1;
