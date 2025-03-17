@@ -1,6 +1,19 @@
-/*
-** dllmd.c -- Distributed Leader Election Daemon using mDNS
-*/
+/**
+ * dllmd.c -- Distributed Leader Election Daemon using mDNS
+ *
+ * This file implements a distributed leader election protocol using mDNS for
+ * service discovery and communication. The system allows nodes to:
+ *
+ * 1. Discover existing service nodes (leaders) on the network
+ * 2. Monitor service health through periodic pings
+ * 3. Automatically elect a new leader when an existing one fails
+ * 4. Announce leadership through mDNS service records
+ * 5. Maintain awareness of other nodes in the network
+ *
+ * The implementation uses a simple election algorithm where nodes wait a random
+ * time after detecting leader failure before attempting to become the new
+ * leader, helping to avoid election conflicts.
+ */
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -20,19 +33,25 @@
 #include "mdns.h"
 #include "util.h"
 
-#define DLLMD_PORT "41891"  // 41891 = 4 18 9 1 = D R I A
+/// `41891 = 4 18 9 1 = D R I A`
+#define DLLMD_PORT "41891"
+/// Service name, as defined by RFC6762 to be `<srv>.local.`
 #define DLLMD_SERVICE_NAME "_dllmd._udp.local."
-#define PING_INTERVAL 5  // Check for service every 5 seconds
-#define PING_TIMEOUT \
-  15                  // Consider service dead after 15 seconds of no response
-#define MAX_NODES 32  // Maximum number of nodes to track
-#define RANDOM_DELAY_MAX \
-  5  // Maximum random delay for service election in seconds
+/// Check for service every 5 seconds
+#define PING_INTERVAL 5
+/// Consider service dead after 15 seconds of no response
+#define PING_TIMEOUT 15
+/// Maximum number of nodes to track
+#define MAX_NODES 32
+/// Maximum random delay for service election in seconds
+#define RANDOM_DELAY_MAX 5
 #define BUFFER_SIZE 2048
 
 typedef enum {
-  NODE_TYPE_CLIENT,  // Regular node
-  NODE_TYPE_SERVICE  // Service node (leader)
+  /// Regular node
+  NODE_TYPE_CLIENT,
+  /// Service node (leader)
+  NODE_TYPE_SERVICE
 } node_type_t;
 
 typedef struct {
@@ -43,36 +62,51 @@ typedef struct {
   int active;
 } node_info_t;
 
-// Global variables
-static volatile int running = 1;
+/* Global variables */
+/// A flag to indicate if the daemon is running.
+static volatile bool running;
 static node_type_t node_type = NODE_TYPE_CLIENT;
+
 static node_info_t service_node;
+static int service_socket = -1;
+
 static node_info_t known_nodes[MAX_NODES];
 static int node_count = 0;
+
 static time_t last_ping_time = 0;
+
 static char hostname_buffer[256];
-static int service_socket = -1;
-static int client_sockets[32];
-static int num_client_sockets = 0;
 static char* message_buffer;
 
-// Forward declarations
+static int client_sockets[32];
+static int num_client_sockets = 0;
+
+/* Forward declarations */
 static void become_service(void);
 static void query_for_service(void);
 static void check_service_health(void);
 static void send_ping(void);
 static void process_incoming_messages(void);
 
-// Signal handler
+/// Handle interrupt signal to gracefully terminate the daemon.
+///
+///@param sig Signal number received
 static void signal_handler(int sig) {
   (void)sig;
   running = 0;
 }
 
-// Get current time in seconds
+/// Get current time in seconds since epoch.
+///
+/// @return Current time as time_t
 static time_t get_current_time(void) { return time(NULL); }
 
-// Check if two sockaddr structures refer to the same address
+/// Compare two sockaddr structures to determine if they refer to the same
+/// address.
+///
+/// @param a First socket address
+/// @param b Second socket address
+/// @return `true` if addresses are equal, `false` otherwise
 static bool sockaddr_equal(const struct sockaddr* a, const struct sockaddr* b) {
   if (a->sa_family != b->sa_family) return false;
 
@@ -95,7 +129,13 @@ static bool sockaddr_equal(const struct sockaddr* a, const struct sockaddr* b) {
   return false;
 }
 
-// Format address to string
+/// Convert IP address to string representation.
+///
+/// @param buffer Buffer to store resulting string
+/// @param capacity Size of the buffer
+/// @param addr Socket address to convert
+/// @param addrlen Length of the socket address
+/// @return Formatted address as `mdns_string_t`
 static mdns_string_t ip_address_to_string(char* buffer, size_t capacity,
                                           const struct sockaddr* addr,
                                           size_t addrlen) {
@@ -117,13 +157,36 @@ static mdns_string_t ip_address_to_string(char* buffer, size_t capacity,
   return str;
 }
 
-// Callback for discovery and ping responses
+/**
+ * Callback function for handling mDNS query responses.
+ * Processes service discovery and ping/pong messages.
+ *
+ * Not all param's may be used, but they are required for the callback.
+ *
+ * @param sock Socket file descriptor
+ * @param from Source address
+ * @param addrlen Length of source address
+ * @param entry Type of mDNS entry
+ * @param query_id Query identifier
+ * @param rtype Record type
+ * @param rclass Record class
+ * @param ttl Time to live
+ * @param data Message data
+ * @param size Size of message data
+ * @param name_offset Offset to name in message
+ * @param name_length Length of name
+ * @param record_offset Offset to record in message
+ * @param record_length Length of record
+ * @param user_data User data passed to callback
+ * @return 0 to continue processing, non-zero to stop
+ */
 static int query_callback(int sock, const struct sockaddr* from, size_t addrlen,
                           mdns_entry_type_t entry, uint16_t query_id,
-                          uint16_t rtype, uint16_t rclass, uint32_t ttl,
+                          uint16_t rtype, uint16_t, uint32_t ttl,
                           const void* data, size_t size, size_t name_offset,
                           size_t name_length, size_t record_offset,
                           size_t record_length, void* user_data) {
+  // if this is not an ANSWER, return
   if (entry != MDNS_ENTRYTYPE_ANSWER) return 0;
 
   char namebuf[256];
@@ -131,7 +194,8 @@ static int query_callback(int sock, const struct sockaddr* from, size_t addrlen,
   mdns_string_t name =
       mdns_string_extract(data, size, &name_offset, namebuf, sizeof(namebuf));
 
-  // Check if this is a response for our service
+  // Check if this is a response for our service (SRV name is
+  // DLLMD_SERVICE_NAME)
   if (rtype == MDNS_RECORDTYPE_SRV &&
       strstr(name.str, DLLMD_SERVICE_NAME) != NULL) {
     mdns_record_srv_t srv = mdns_record_parse_srv(
@@ -151,8 +215,8 @@ static int query_callback(int sock, const struct sockaddr* from, size_t addrlen,
     printf("Found service: %.*s at %.*s\n", MDNS_STRING_FORMAT(srv.name),
            MDNS_STRING_FORMAT(addrstr));
 
-    // If we were trying to become a service but found an existing one, go back
-    // to client
+    // if we were trying to become a service but found an existing one,
+    // go back to client
     if (node_type == NODE_TYPE_SERVICE) {
       printf("Another node is already the service, reverting to client mode\n");
       node_type = NODE_TYPE_CLIENT;
@@ -230,7 +294,27 @@ static int query_callback(int sock, const struct sockaddr* from, size_t addrlen,
   return 0;
 }
 
-// Callback for service queries
+/**
+ * Callback function for handling service queries.
+ * Responds to queries about the service when this node is the leader.
+ *
+ * @param sock Socket file descriptor
+ * @param from Source address
+ * @param addrlen Length of source address
+ * @param entry Type of mDNS entry
+ * @param query_id Query identifier
+ * @param rtype Record type
+ * @param rclass Record class
+ * @param ttl Time to live
+ * @param data Message data
+ * @param size Size of message data
+ * @param name_offset Offset to name in message
+ * @param name_length Length of name
+ * @param record_offset Offset to record in message
+ * @param record_length Length of record
+ * @param user_data User data passed to callback
+ * @return 0 to continue processing, non-zero to stop
+ */
 static int service_callback(int sock, const struct sockaddr* from,
                             size_t addrlen, mdns_entry_type_t entry,
                             uint16_t query_id, uint16_t rtype, uint16_t rclass,
@@ -314,17 +398,17 @@ static int service_callback(int sock, const struct sockaddr* from,
   return 0;
 }
 
-// Open client sockets for sending queries
+/// Open client sockets for sending queries to other nodes.
 static void open_client_sockets(void) {
   num_client_sockets = 0;
 
-  // This is a simplified version - in production code, you would open
+  // FIXME: this is a simplified version - in production code, you would open
   // sockets for each network interface
   struct sockaddr_in addr;
   memset(&addr, 0, sizeof(addr));
   addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = INADDR_ANY;
-  addr.sin_port = 0;  // Let the OS assign a port
+  addr.sin_port = 0;  // lets the OS assign a random port
 
   int sock = mdns_socket_open_ipv4(&addr);
   if (sock >= 0) {
@@ -335,7 +419,7 @@ static void open_client_sockets(void) {
   }
 }
 
-// Open service socket for listening
+/// Open service socket for listening to incoming mDNS queries.
 static void open_service_socket(void) {
   struct sockaddr_in sock_addr;
   memset(&sock_addr, 0, sizeof(sock_addr));
@@ -351,10 +435,12 @@ static void open_service_socket(void) {
   }
 }
 
-// Query for existing service
+/// Query the network for an existing dllmd service (leader).
+/// If no leader is found, this node will become the leader.
 static void query_for_service(void) {
   printf("Querying for existing dllmd service...\n");
 
+  // if we havent opened any client sockets, do so now
   if (num_client_sockets == 0) {
     open_client_sockets();
     if (num_client_sockets == 0) {
@@ -363,53 +449,62 @@ static void query_for_service(void) {
     }
   }
 
+  // send a query for each of them
   for (int i = 0; i < num_client_sockets; i++) {
     mdns_query_send(client_sockets[i], MDNS_RECORDTYPE_SRV, DLLMD_SERVICE_NAME,
                     strlen(DLLMD_SERVICE_NAME), message_buffer, BUFFER_SIZE, 0);
   }
 
-  // Give time for responses to come in
+  // set timeout for `select` below
   struct timeval timeout;
   timeout.tv_sec = 1;
   timeout.tv_usec = 0;
 
+  // a set of file-descriptors for reading
   fd_set readfds;
   int nfds = 0;
 
   for (int attempt = 0; attempt < 3; attempt++) {
+    // zero the entire set
     FD_ZERO(&readfds);
+
+    // add all client sockets to the set
     for (int i = 0; i < num_client_sockets; i++) {
-      FD_SET(client_sockets[i], &readfds);
       if (client_sockets[i] >= nfds) nfds = client_sockets[i] + 1;
+      FD_SET(client_sockets[i], &readfds);
     }
 
+    // wait for responses on all of them via `select` (with timeout)
     if (select(nfds, &readfds, NULL, NULL, &timeout) >= 0) {
+      printf("Reading mDNS query replies\n");
       for (int i = 0; i < num_client_sockets; i++) {
-        // if (FD_SET(client_sockets[i], &readfds)) {
-        mdns_query_recv(client_sockets[i], message_buffer, BUFFER_SIZE,
-                        query_callback, NULL, 0);
-        // }
+        // TODO: !!!
+        if (FD_ISSET(client_sockets[i], &readfds)) {
+          mdns_query_recv(client_sockets[i], message_buffer, BUFFER_SIZE,
+                          query_callback, NULL, 0);
+        } else {
+          printf("No response on socket %d\n", client_sockets[i]);
+        }
       }
     } else {
-      // TODO: should I log here?
       perror("select");
     }
   }
 
-  // If no service found after all attempts, become the service
+  // if no service is active after all query attempts, become the service
   if (!service_node.active) {
     printf("No existing dllmd service found\n");
     become_service();
   }
 }
 
-// Send ping to service
+/// Send a ping message to the current leader to verify it's still active.
 static void send_ping(void) {
+  // we only do this if we are the client & there is an active service
   if (node_type == NODE_TYPE_CLIENT && service_node.active) {
     printf("Sending ping to service\n");
 
     for (int i = 0; i < num_client_sockets; i++) {
-      // Create a TXT record for ping
       mdns_record_t ping_record = {
           .name = {DLLMD_SERVICE_NAME, strlen(DLLMD_SERVICE_NAME)},
           .type = MDNS_RECORDTYPE_TXT,
@@ -418,7 +513,6 @@ static void send_ping(void) {
           .rclass = MDNS_CLASS_IN,
           .ttl = 1};
 
-      // Multicast the ping
       mdns_query_answer_multicast(client_sockets[i], message_buffer,
                                   BUFFER_SIZE, ping_record, 0, 0, 0, 0);
     }
@@ -427,17 +521,20 @@ static void send_ping(void) {
   }
 }
 
-// Check if service is still alive
+/// Check if the current leader service is still alive.
+///
+/// If the leader hasn't responded for `PING_TIMEOUT` seconds,
+/// initiate a new leader election process.
 static void check_service_health(void) {
   if (node_type == NODE_TYPE_CLIENT && service_node.active) {
     time_t current_time = get_current_time();
 
-    // If we haven't seen the service for PING_TIMEOUT seconds, consider it dead
+    // if we haven't seen the service for PING_TIMEOUT seconds, consider it dead
     if (current_time - service_node.last_seen > PING_TIMEOUT) {
       printf("Service node appears to be down! Last seen %ld seconds ago\n",
              current_time - service_node.last_seen);
 
-      // Query for service one more time to confirm it's down
+      // one last query to confirm service is down down
       query_for_service();
 
       // If still no response, prepare to become the service
@@ -463,7 +560,10 @@ static void check_service_health(void) {
   }
 }
 
-// Become a service node
+/// Transition this node to become the service leader.
+///
+/// Opens a service socket, announces leadership through mDNS,
+/// and updates the node type.
 static void become_service(void) {
   printf("Becoming dllmd service node\n");
 
@@ -488,7 +588,7 @@ static void become_service(void) {
   snprintf(hostname_local, sizeof(hostname_local), "%s.local.",
            hostname_buffer);
 
-  // Announce the service
+  // announce the service
   mdns_record_t ptr_record = {
       .name = {DLLMD_SERVICE_NAME, strlen(DLLMD_SERVICE_NAME)},
       .type = MDNS_RECORDTYPE_PTR,
@@ -523,10 +623,12 @@ static void become_service(void) {
   printf("Service announced\n");
 }
 
-// Process incoming messages
+/// Process incoming mDNS messages.
+///
+/// Handles both client socket messages and service socket messages.
 static void process_incoming_messages(void) {
-  fd_set readfds;
   int nfds = 0;
+  fd_set readfds;
 
   FD_ZERO(&readfds);
 
@@ -542,9 +644,10 @@ static void process_incoming_messages(void) {
     if (service_socket >= nfds) nfds = service_socket + 1;
   }
 
+  // 5 seconds timeout
   struct timeval timeout;
-  timeout.tv_sec = 0;
-  timeout.tv_usec = 100000;  // 100ms
+  timeout.tv_sec = 5;
+  timeout.tv_usec = 0;
 
   if (select(nfds, &readfds, NULL, NULL, &timeout) > 0) {
     // Check client sockets
@@ -564,7 +667,19 @@ static void process_incoming_messages(void) {
   }
 }
 
+/// Main entry point for the dllm daemon.
+
+/// Initializes the daemon, discovers or becomes a leader, and runs
+/// the main event loop.
+///
+/// @param argc Number of command-line arguments
+/// @param argv Array of command-line arguments
+/// @return 0 on successful termination, non-zero on error
 int dllmd_main(int argc, char* argv[]) {
+  // silence unused args (we may use them later)
+  (void)argc;
+  (void)argv;
+
   // Initialize
   srand((unsigned int)time(NULL));
   memset(&service_node, 0, sizeof(service_node));
@@ -572,7 +687,6 @@ int dllmd_main(int argc, char* argv[]) {
 
   // Get hostname
   gethostname(hostname_buffer, sizeof(hostname_buffer));
-
   printf("DLLMD started on host: %s\n", hostname_buffer);
 
   // Allocate message buffer
@@ -582,16 +696,17 @@ int dllmd_main(int argc, char* argv[]) {
     return -1;
   }
 
-  // Set up signal handler
+  // set up signal handler for SIGINT
   signal(SIGINT, signal_handler);
 
-  // Open client sockets
+  // prepare client socket
   open_client_sockets();
 
-  // Query for existing service
+  // q for existing service
   query_for_service();
 
   // Main loop
+  running = true;
   while (running) {
     time_t current_time = get_current_time();
 
@@ -622,6 +737,6 @@ int dllmd_main(int argc, char* argv[]) {
     mdns_socket_close(service_socket);
   }
 
-  printf("DLLMD terminated\n");
+  printf("\ndllmd terminated, bye.\n");
   return 0;
 }
