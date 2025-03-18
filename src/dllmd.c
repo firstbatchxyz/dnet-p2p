@@ -114,15 +114,13 @@ static bool sockaddr_equal(const struct sockaddr* a, const struct sockaddr* b) {
     // ipv4
     const struct sockaddr_in* a_in = (const struct sockaddr_in*)a;
     const struct sockaddr_in* b_in = (const struct sockaddr_in*)b;
-    return a_in->sin_addr.s_addr == b_in->sin_addr.s_addr &&
-           a_in->sin_port == b_in->sin_port;
+    return a_in->sin_addr.s_addr == b_in->sin_addr.s_addr && a_in->sin_port == b_in->sin_port;
 
   } else if (a->sa_family == AF_INET6) {
     // ipv6
     const struct sockaddr_in6* a_in6 = (const struct sockaddr_in6*)a;
     const struct sockaddr_in6* b_in6 = (const struct sockaddr_in6*)b;
-    return memcmp(&a_in6->sin6_addr, &b_in6->sin6_addr,
-                  sizeof(struct in6_addr)) == 0 &&
+    return memcmp(&a_in6->sin6_addr, &b_in6->sin6_addr, sizeof(struct in6_addr)) == 0 &&
            a_in6->sin6_port == b_in6->sin6_port;
   }
 
@@ -136,13 +134,11 @@ static bool sockaddr_equal(const struct sockaddr* a, const struct sockaddr* b) {
 /// @param addr Socket address to convert
 /// @param addrlen Length of the socket address
 /// @return Formatted address as `mdns_string_t`
-static mdns_string_t ip_address_to_string(char* buffer, size_t capacity,
-                                          const struct sockaddr* addr,
-                                          size_t addrlen) {
+static mdns_string_t ip_address_to_string(char* buffer, size_t capacity, const struct sockaddr* addr, size_t addrlen) {
   char host[NI_MAXHOST] = {0};
   char service[NI_MAXSERV] = {0};
-  int ret = getnameinfo(addr, (socklen_t)addrlen, host, NI_MAXHOST, service,
-                        NI_MAXSERV, NI_NUMERICSERV | NI_NUMERICHOST);
+  int ret =
+      getnameinfo(addr, (socklen_t)addrlen, host, NI_MAXHOST, service, NI_MAXSERV, NI_NUMERICSERV | NI_NUMERICHOST);
   int len = 0;
   if (ret == 0) {
     if (addr->sa_family == AF_INET)
@@ -180,40 +176,32 @@ static mdns_string_t ip_address_to_string(char* buffer, size_t capacity,
  * @param user_data User data passed to callback
  * @return 0 to continue processing, non-zero to stop
  */
-static int query_callback(int sock, const struct sockaddr* from, size_t addrlen,
-                          mdns_entry_type_t entry, uint16_t query_id,
-                          uint16_t rtype, uint16_t, uint32_t ttl,
-                          const void* data, size_t size, size_t name_offset,
-                          size_t name_length, size_t record_offset,
-                          size_t record_length, void* user_data) {
+static int query_callback(int sock, const struct sockaddr* from, size_t addrlen, mdns_entry_type_t entry,
+                          uint16_t query_id, uint16_t rtype, uint16_t, uint32_t ttl, const void* data, size_t size,
+                          size_t name_offset, size_t name_length, size_t record_offset, size_t record_length,
+                          void* user_data) {
   // if this is not an ANSWER, return
   if (entry != MDNS_ENTRYTYPE_ANSWER) return 0;
 
   char namebuf[256];
   char addrbuf[128];
-  mdns_string_t name =
-      mdns_string_extract(data, size, &name_offset, namebuf, sizeof(namebuf));
+  mdns_string_t name = mdns_string_extract(data, size, &name_offset, namebuf, sizeof(namebuf));
 
   // Check if this is a response for our service (SRV name is
   // DLLMD_SERVICE_NAME)
-  if (rtype == MDNS_RECORDTYPE_SRV &&
-      strstr(name.str, DLLMD_SERVICE_NAME) != NULL) {
-    mdns_record_srv_t srv = mdns_record_parse_srv(
-        data, size, record_offset, record_length, namebuf, sizeof(namebuf));
+  if (rtype == MDNS_RECORDTYPE_SRV && strstr(name.str, DLLMD_SERVICE_NAME) != NULL) {
+    mdns_record_srv_t srv = mdns_record_parse_srv(data, size, record_offset, record_length, namebuf, sizeof(namebuf));
 
     // Found a service node
     memcpy(&service_node.addr, from, addrlen);
     service_node.addrlen = addrlen;
-    strncpy(service_node.hostname, srv.name.str,
-            sizeof(service_node.hostname) - 1);
+    strncpy(service_node.hostname, srv.name.str, sizeof(service_node.hostname) - 1);
     service_node.hostname[sizeof(service_node.hostname) - 1] = '\0';
     service_node.last_seen = get_current_time();
     service_node.active = 1;
 
-    mdns_string_t addrstr =
-        ip_address_to_string(addrbuf, sizeof(addrbuf), from, addrlen);
-    printf("Found service: %.*s at %.*s\n", MDNS_STRING_FORMAT(srv.name),
-           MDNS_STRING_FORMAT(addrstr));
+    mdns_string_t addrstr = ip_address_to_string(addrbuf, sizeof(addrbuf), from, addrlen);
+    printf("Found service: %.*s at %.*s\n", MDNS_STRING_FORMAT(srv.name), MDNS_STRING_FORMAT(addrstr));
 
     // if we were trying to become a service but found an existing one,
     // go back to client
@@ -226,16 +214,13 @@ static int query_callback(int sock, const struct sockaddr* from, size_t addrlen,
   }
   // Process pings/pongs
   else if (rtype == MDNS_RECORDTYPE_TXT) {
-    size_t parsed =
-        mdns_record_parse_txt(data, size, record_offset, record_length,
-                              (mdns_record_txt_t*)namebuf, 16);
+    size_t parsed = mdns_record_parse_txt(data, size, record_offset, record_length, (mdns_record_txt_t*)namebuf, 16);
 
     for (size_t i = 0; i < parsed; ++i) {
       mdns_record_txt_t* record = (mdns_record_txt_t*)namebuf + i;
 
       // Check for ping messages
-      if (record->value.length >= 4 &&
-          strncmp(record->key.str, "ping", 4) == 0) {
+      if (record->value.length >= 4 && strncmp(record->key.str, "ping", 4) == 0) {
         printf("Received ping from %.*s\n", MDNS_STRING_FORMAT(name));
 
         // If we're the service, update the node's last_seen time
@@ -257,34 +242,28 @@ static int query_callback(int sock, const struct sockaddr* from, size_t addrlen,
             known_nodes[node_count].active = 1;
             node_count++;
 
-            mdns_string_t addrstr =
-                ip_address_to_string(addrbuf, sizeof(addrbuf), from, addrlen);
+            mdns_string_t addrstr = ip_address_to_string(addrbuf, sizeof(addrbuf), from, addrlen);
             printf("New node registered: %.*s\n", MDNS_STRING_FORMAT(addrstr));
           }
 
           // Send pong response
-          mdns_query_answer_unicast(
-              sock, from, addrlen, message_buffer, BUFFER_SIZE, query_id,
-              MDNS_RECORDTYPE_TXT, DLLMD_SERVICE_NAME,
-              strlen(DLLMD_SERVICE_NAME),
-              (mdns_record_t){
-                  .name = {DLLMD_SERVICE_NAME, strlen(DLLMD_SERVICE_NAME)},
-                  .type = MDNS_RECORDTYPE_TXT,
-                  .data.txt.key = {MDNS_STRING_CONST("pong")},
-                  .data.txt.value = {MDNS_STRING_CONST("1")},
-              },
-              0, 0, 0, 0);
+          mdns_query_answer_unicast(sock, from, addrlen, message_buffer, BUFFER_SIZE, query_id, MDNS_RECORDTYPE_TXT,
+                                    DLLMD_SERVICE_NAME, strlen(DLLMD_SERVICE_NAME),
+                                    (mdns_record_t){
+                                        .name = {DLLMD_SERVICE_NAME, strlen(DLLMD_SERVICE_NAME)},
+                                        .type = MDNS_RECORDTYPE_TXT,
+                                        .data.txt.key = {MDNS_STRING_CONST("pong")},
+                                        .data.txt.value = {MDNS_STRING_CONST("1")},
+                                    },
+                                    0, 0, 0, 0);
         }
       }
       // Check for pong responses
-      else if (record->value.length >= 4 &&
-               strncmp(record->key.str, "pong", 4) == 0) {
-        mdns_string_t addrstr =
-            ip_address_to_string(addrbuf, sizeof(addrbuf), from, addrlen);
+      else if (record->value.length >= 4 && strncmp(record->key.str, "pong", 4) == 0) {
+        mdns_string_t addrstr = ip_address_to_string(addrbuf, sizeof(addrbuf), from, addrlen);
         printf("Received pong from %.*s\n", MDNS_STRING_FORMAT(addrstr));
 
-        if (node_type == NODE_TYPE_CLIENT &&
-            sockaddr_equal((struct sockaddr*)&service_node.addr, from)) {
+        if (node_type == NODE_TYPE_CLIENT && sockaddr_equal((struct sockaddr*)&service_node.addr, from)) {
           service_node.last_seen = get_current_time();
         }
       }
@@ -315,82 +294,68 @@ static int query_callback(int sock, const struct sockaddr* from, size_t addrlen,
  * @param user_data User data passed to callback
  * @return 0 to continue processing, non-zero to stop
  */
-static int service_callback(int sock, const struct sockaddr* from,
-                            size_t addrlen, mdns_entry_type_t entry,
-                            uint16_t query_id, uint16_t rtype, uint16_t rclass,
-                            uint32_t ttl, const void* data, size_t size,
-                            size_t name_offset, size_t name_length,
-                            size_t record_offset, size_t record_length,
-                            void* user_data) {
+static int service_callback(int sock, const struct sockaddr* from, size_t addrlen, mdns_entry_type_t entry,
+                            uint16_t query_id, uint16_t rtype, uint16_t rclass, uint32_t ttl, const void* data,
+                            size_t size, size_t name_offset, size_t name_length, size_t record_offset,
+                            size_t record_length, void* user_data) {
   if (entry != MDNS_ENTRYTYPE_QUESTION) return 0;
 
   char namebuf[256];
   char addrbuf[128];
   size_t offset = name_offset;
-  mdns_string_t name =
-      mdns_string_extract(data, size, &offset, namebuf, sizeof(namebuf));
+  mdns_string_t name = mdns_string_extract(data, size, &offset, namebuf, sizeof(namebuf));
 
   // Only respond if we're the service
   if (node_type != NODE_TYPE_SERVICE) return 0;
 
   // Check if this is a query for our service
-  if ((name.length == strlen(DLLMD_SERVICE_NAME)) &&
-      (strncmp(name.str, DLLMD_SERVICE_NAME, name.length) == 0)) {
+  if ((name.length == strlen(DLLMD_SERVICE_NAME)) && (strncmp(name.str, DLLMD_SERVICE_NAME, name.length) == 0)) {
     if ((rtype == MDNS_RECORDTYPE_PTR) || (rtype == MDNS_RECORDTYPE_ANY)) {
       // Create service instance name: hostname._dllmd._udp.local.
       char service_instance[512];
-      snprintf(service_instance, sizeof(service_instance), "%s.%s",
-               hostname_buffer, DLLMD_SERVICE_NAME);
+      snprintf(service_instance, sizeof(service_instance), "%s.%s", hostname_buffer, DLLMD_SERVICE_NAME);
 
       // Answer PTR record
-      mdns_record_t answer = {
-          .name = {DLLMD_SERVICE_NAME, strlen(DLLMD_SERVICE_NAME)},
-          .type = MDNS_RECORDTYPE_PTR,
-          .data.ptr.name = {service_instance, strlen(service_instance)},
-          .rclass = rclass,
-          .ttl = 60};
+      mdns_record_t answer = {.name = {DLLMD_SERVICE_NAME, strlen(DLLMD_SERVICE_NAME)},
+                              .type = MDNS_RECORDTYPE_PTR,
+                              .data.ptr.name = {service_instance, strlen(service_instance)},
+                              .rclass = rclass,
+                              .ttl = 60};
 
       // Create hostname.local. for SRV record
       char hostname_local[256];
-      snprintf(hostname_local, sizeof(hostname_local), "%s.local.",
-               hostname_buffer);
+      snprintf(hostname_local, sizeof(hostname_local), "%s.local.", hostname_buffer);
 
       // Set up SRV record
-      mdns_record_t srv_record = {
-          .name = {service_instance, strlen(service_instance)},
-          .type = MDNS_RECORDTYPE_SRV,
-          .data.srv.name = {hostname_local, strlen(hostname_local)},
-          .data.srv.port = atoi(DLLMD_PORT),
-          .data.srv.priority = 0,
-          .data.srv.weight = 0,
-          .rclass = rclass,
-          .ttl = 60};
+      mdns_record_t srv_record = {.name = {service_instance, strlen(service_instance)},
+                                  .type = MDNS_RECORDTYPE_SRV,
+                                  .data.srv.name = {hostname_local, strlen(hostname_local)},
+                                  .data.srv.port = atoi(DLLMD_PORT),
+                                  .data.srv.priority = 0,
+                                  .data.srv.weight = 0,
+                                  .rclass = rclass,
+                                  .ttl = 60};
 
       // Set up TXT records
-      mdns_record_t txt_record = {
-          .name = {service_instance, strlen(service_instance)},
-          .type = MDNS_RECORDTYPE_TXT,
-          .data.txt.key = {MDNS_STRING_CONST("info")},
-          .data.txt.value = {MDNS_STRING_CONST("dllmd service")},
-          .rclass = rclass,
-          .ttl = 60};
+      mdns_record_t txt_record = {.name = {service_instance, strlen(service_instance)},
+                                  .type = MDNS_RECORDTYPE_TXT,
+                                  .data.txt.key = {MDNS_STRING_CONST("info")},
+                                  .data.txt.value = {MDNS_STRING_CONST("dllmd service")},
+                                  .rclass = rclass,
+                                  .ttl = 60};
 
       // Set up additional records
       mdns_record_t additional[2] = {srv_record, txt_record};
 
       uint16_t unicast = (rclass & MDNS_UNICAST_RESPONSE);
-      mdns_string_t addrstr =
-          ip_address_to_string(addrbuf, sizeof(addrbuf), from, addrlen);
-      printf("Answering query from %.*s (%s)\n", MDNS_STRING_FORMAT(addrstr),
-             (unicast ? "unicast" : "multicast"));
+      mdns_string_t addrstr = ip_address_to_string(addrbuf, sizeof(addrbuf), from, addrlen);
+      printf("Answering query from %.*s (%s)\n", MDNS_STRING_FORMAT(addrstr), (unicast ? "unicast" : "multicast"));
 
       if (unicast) {
-        mdns_query_answer_unicast(sock, from, addrlen, message_buffer,
-                                  BUFFER_SIZE, query_id, rtype, name.str,
+        mdns_query_answer_unicast(sock, from, addrlen, message_buffer, BUFFER_SIZE, query_id, rtype, name.str,
                                   name.length, answer, 0, 0, additional, 2);
       } else {
-        mdns_query_answer_multicast(sock, message_buffer, BUFFER_SIZE, answer,
-                                    0, 0, additional, 2);
+        mdns_query_answer_multicast(sock, message_buffer, BUFFER_SIZE, answer, 0, 0, additional, 2);
       }
     }
   }
@@ -451,8 +416,8 @@ static void query_for_service(void) {
 
   // send a query for each of them
   for (int i = 0; i < num_client_sockets; i++) {
-    mdns_query_send(client_sockets[i], MDNS_RECORDTYPE_SRV, DLLMD_SERVICE_NAME,
-                    strlen(DLLMD_SERVICE_NAME), message_buffer, BUFFER_SIZE, 0);
+    mdns_query_send(client_sockets[i], MDNS_RECORDTYPE_SRV, DLLMD_SERVICE_NAME, strlen(DLLMD_SERVICE_NAME),
+                    message_buffer, BUFFER_SIZE, 0);
   }
 
   // set timeout for `select` below
@@ -480,8 +445,7 @@ static void query_for_service(void) {
       for (int i = 0; i < num_client_sockets; i++) {
         // TODO: !!!
         if (FD_ISSET(client_sockets[i], &readfds)) {
-          mdns_query_recv(client_sockets[i], message_buffer, BUFFER_SIZE,
-                          query_callback, NULL, 0);
+          mdns_query_recv(client_sockets[i], message_buffer, BUFFER_SIZE, query_callback, NULL, 0);
         } else {
           printf("No response on socket %d\n", client_sockets[i]);
         }
@@ -505,16 +469,14 @@ static void send_ping(void) {
     printf("Sending ping to service\n");
 
     for (int i = 0; i < num_client_sockets; i++) {
-      mdns_record_t ping_record = {
-          .name = {DLLMD_SERVICE_NAME, strlen(DLLMD_SERVICE_NAME)},
-          .type = MDNS_RECORDTYPE_TXT,
-          .data.txt.key = {MDNS_STRING_CONST("ping")},
-          .data.txt.value = {MDNS_STRING_CONST("1")},
-          .rclass = MDNS_CLASS_IN,
-          .ttl = 1};
+      mdns_record_t ping_record = {.name = {DLLMD_SERVICE_NAME, strlen(DLLMD_SERVICE_NAME)},
+                                   .type = MDNS_RECORDTYPE_TXT,
+                                   .data.txt.key = {MDNS_STRING_CONST("ping")},
+                                   .data.txt.value = {MDNS_STRING_CONST("1")},
+                                   .rclass = MDNS_CLASS_IN,
+                                   .ttl = 1};
 
-      mdns_query_answer_multicast(client_sockets[i], message_buffer,
-                                  BUFFER_SIZE, ping_record, 0, 0, 0, 0);
+      mdns_query_answer_multicast(client_sockets[i], message_buffer, BUFFER_SIZE, ping_record, 0, 0, 0, 0);
     }
 
     last_ping_time = get_current_time();
@@ -531,8 +493,7 @@ static void check_service_health(void) {
 
     // if we haven't seen the service for PING_TIMEOUT seconds, consider it dead
     if (current_time - service_node.last_seen > PING_TIMEOUT) {
-      printf("Service node appears to be down! Last seen %ld seconds ago\n",
-             current_time - service_node.last_seen);
+      printf("Service node appears to be down! Last seen %ld seconds ago\n", current_time - service_node.last_seen);
 
       // one last query to confirm service is down down
       query_for_service();
@@ -543,9 +504,7 @@ static void check_service_health(void) {
 
         // Wait random time to avoid race conditions with other nodes
         int delay = rand() % RANDOM_DELAY_MAX + 1;
-        printf(
-            "Will become service in %d seconds if no other node takes over\n",
-            delay);
+        printf("Will become service in %d seconds if no other node takes over\n", delay);
         sleep(delay);
 
         // Query one more time
@@ -580,45 +539,39 @@ static void become_service(void) {
 
   // Create service instance name: hostname._dllmd._udp.local.
   char service_instance[512];
-  snprintf(service_instance, sizeof(service_instance), "%s.%s", hostname_buffer,
-           DLLMD_SERVICE_NAME);
+  snprintf(service_instance, sizeof(service_instance), "%s.%s", hostname_buffer, DLLMD_SERVICE_NAME);
 
   // Create hostname.local. for SRV record
   char hostname_local[256];
-  snprintf(hostname_local, sizeof(hostname_local), "%s.local.",
-           hostname_buffer);
+  snprintf(hostname_local, sizeof(hostname_local), "%s.local.", hostname_buffer);
 
   // announce the service
-  mdns_record_t ptr_record = {
-      .name = {DLLMD_SERVICE_NAME, strlen(DLLMD_SERVICE_NAME)},
-      .type = MDNS_RECORDTYPE_PTR,
-      .data.ptr.name = {service_instance, strlen(service_instance)},
-      .rclass = MDNS_CLASS_IN,
-      .ttl = 60};
+  mdns_record_t ptr_record = {.name = {DLLMD_SERVICE_NAME, strlen(DLLMD_SERVICE_NAME)},
+                              .type = MDNS_RECORDTYPE_PTR,
+                              .data.ptr.name = {service_instance, strlen(service_instance)},
+                              .rclass = MDNS_CLASS_IN,
+                              .ttl = 60};
 
-  mdns_record_t srv_record = {
-      .name = {service_instance, strlen(service_instance)},
-      .type = MDNS_RECORDTYPE_SRV,
-      .data.srv.name = {hostname_local, strlen(hostname_local)},
-      .data.srv.port = atoi(DLLMD_PORT),
-      .data.srv.priority = 0,
-      .data.srv.weight = 0,
-      .rclass = MDNS_CLASS_IN,
-      .ttl = 60};
+  mdns_record_t srv_record = {.name = {service_instance, strlen(service_instance)},
+                              .type = MDNS_RECORDTYPE_SRV,
+                              .data.srv.name = {hostname_local, strlen(hostname_local)},
+                              .data.srv.port = atoi(DLLMD_PORT),
+                              .data.srv.priority = 0,
+                              .data.srv.weight = 0,
+                              .rclass = MDNS_CLASS_IN,
+                              .ttl = 60};
 
-  mdns_record_t txt_record = {
-      .name = {service_instance, strlen(service_instance)},
-      .type = MDNS_RECORDTYPE_TXT,
-      .data.txt.key = {MDNS_STRING_CONST("info")},
-      .data.txt.value = {MDNS_STRING_CONST("dllmd service")},
-      .rclass = MDNS_CLASS_IN,
-      .ttl = 60};
+  mdns_record_t txt_record = {.name = {service_instance, strlen(service_instance)},
+                              .type = MDNS_RECORDTYPE_TXT,
+                              .data.txt.key = {MDNS_STRING_CONST("info")},
+                              .data.txt.value = {MDNS_STRING_CONST("dllmd service")},
+                              .rclass = MDNS_CLASS_IN,
+                              .ttl = 60};
 
   mdns_record_t additional[2] = {srv_record, txt_record};
 
   // Send service announcement
-  mdns_announce_multicast(service_socket, message_buffer, BUFFER_SIZE,
-                          ptr_record, 0, 0, additional, 2);
+  mdns_announce_multicast(service_socket, message_buffer, BUFFER_SIZE, ptr_record, 0, 0, additional, 2);
 
   printf("Service announced\n");
 }
@@ -653,16 +606,13 @@ static void process_incoming_messages(void) {
     // Check client sockets
     for (int i = 0; i < num_client_sockets; i++) {
       if (FD_ISSET(client_sockets[i], &readfds)) {
-        mdns_query_recv(client_sockets[i], message_buffer, BUFFER_SIZE,
-                        query_callback, NULL, 0);
+        mdns_query_recv(client_sockets[i], message_buffer, BUFFER_SIZE, query_callback, NULL, 0);
       }
     }
 
     // Check service socket
-    if (node_type == NODE_TYPE_SERVICE && service_socket >= 0 &&
-        FD_ISSET(service_socket, &readfds)) {
-      mdns_socket_listen(service_socket, message_buffer, BUFFER_SIZE,
-                         service_callback, NULL);
+    if (node_type == NODE_TYPE_SERVICE && service_socket >= 0 && FD_ISSET(service_socket, &readfds)) {
+      mdns_socket_listen(service_socket, message_buffer, BUFFER_SIZE, service_callback, NULL);
     }
   }
 }

@@ -77,8 +77,19 @@ Source code from public domain [mDNS](https://github.com/mjansson/mdns) header-o
 
 # query an mDNS host
 ./build/main mdns --query <hostname>
-./build/main mdns --query _test-mdns._tcp.local.
+./build/main mdns --query _dllmd._tcp.local.
 
 # discovery services
 ./build/main mdns --discovery
+
+# dump all mDNS queries and answers to stdout
+./build/main mdns --dump
+
+# start the daemon
+./build/main mdns --daemon
 ```
+
+For all available commands:
+
+- Hostname can be overwritten via `--hostname <name>` option, otherwise it is attempted to be read via a systemcall to get machine's host name.
+- Port can be overwritten via `--port <port>` option, otherwise it defaults to 41891 which stands for `dria` in alphabetic index.

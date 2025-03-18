@@ -38,8 +38,7 @@ int listener_main(void) {
   int sockfd;
   struct addrinfo *conn;
   for (conn = servinfo; conn != NULL; conn = conn->ai_next) {
-    if ((sockfd = socket(conn->ai_family, conn->ai_socktype,
-                         conn->ai_protocol)) == -1) {
+    if ((sockfd = socket(conn->ai_family, conn->ai_socktype, conn->ai_protocol)) == -1) {
       perror("listener: socket");
       continue;
     }
@@ -65,17 +64,14 @@ int listener_main(void) {
   struct sockaddr_storage their_addr;
   socklen_t addr_len;
   addr_len = sizeof their_addr;
-  if ((numbytes = recvfrom(sockfd, buf, LISTENER_MAXBUFLEN - 1, 0,
-                           (struct sockaddr *)&their_addr, &addr_len)) == -1) {
+  if ((numbytes = recvfrom(sockfd, buf, LISTENER_MAXBUFLEN - 1, 0, (struct sockaddr *)&their_addr, &addr_len)) == -1) {
     perror("recvfrom");
     exit(1);
   }
 
   char server_addr[INET6_ADDRSTRLEN];
   printf("listener: got packet from %s\n",
-         inet_ntop(their_addr.ss_family,
-                   get_in_addr((struct sockaddr *)&their_addr), server_addr,
-                   sizeof server_addr));
+         inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), server_addr, sizeof server_addr));
   printf("listener: packet is %d bytes long\n", numbytes);
   buf[numbytes] = '\0';
   printf("listener: packet contains \"%s\"\n", buf);

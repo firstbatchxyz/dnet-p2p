@@ -1,2 +1,4 @@
 ---
 BasedOnStyle: Google
+ReflowComments: false
+ColumnLimit: 120

@@ -50,8 +50,7 @@ int talker_main(int argc, char *argv[]) {
     return 2;
   }
 
-  if ((numbytes = sendto(sockfd, argv[2], strlen(argv[2]), 0, p->ai_addr,
-                         p->ai_addrlen)) == -1) {
+  if ((numbytes = sendto(sockfd, argv[2], strlen(argv[2]), 0, p->ai_addr, p->ai_addrlen)) == -1) {
     perror("talker: sendto");
     exit(1);
   }

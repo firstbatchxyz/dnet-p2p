@@ -36,8 +36,8 @@ void sigchld_handler(int s) {
 }
 
 int server_main(void) {
-  int sockfd;  // Main socket file descriptor for listening
-  int new_fd;  // New socket file descriptor for accepted connections
+  int sockfd;                            // Main socket file descriptor for listening
+  int new_fd;                            // New socket file descriptor for accepted connections
   struct addrinfo hints, *servinfo, *p;  // Structures for storing address info
   struct sockaddr_storage their_addr;    // Client's address information
   socklen_t sin_size;
@@ -119,8 +119,7 @@ int server_main(void) {
     }
 
     // Convert client's IP address to string and print it
-    inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr),
-              client_addr, sizeof client_addr);
+    inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), client_addr, sizeof client_addr);
     printf("server: got connection from %s\n", client_addr);
 
     // Fork a child process to handle the connection

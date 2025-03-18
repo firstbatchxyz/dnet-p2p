@@ -32,7 +32,7 @@ int client_main(int argc, char *argv[]) {
   // Initialize the hints structure with zeros
   struct addrinfo hints;
   memset(&hints, 0, sizeof hints);
-  hints.ai_family = AF_UNSPEC;  // Use IPv4 or IPv6, whichever address family
+  hints.ai_family = AF_UNSPEC;      // Use IPv4 or IPv6, whichever address family
   hints.ai_socktype = SOCK_STREAM;  // Use TCP stream sockets
 
   // Get address information for the server
@@ -48,8 +48,7 @@ int client_main(int argc, char *argv[]) {
   struct addrinfo *conn;  // Chosen connection
   for (conn = servinfo; conn != NULL; conn = conn->ai_next) {
     // Try to create a socket
-    if ((sockfd = socket(conn->ai_family, conn->ai_socktype,
-                         conn->ai_protocol)) == -1) {
+    if ((sockfd = socket(conn->ai_family, conn->ai_socktype, conn->ai_protocol)) == -1) {
       // If failed, try next address
       perror("client: socket");
       continue;
@@ -75,8 +74,7 @@ int client_main(int argc, char *argv[]) {
   // Convert the server's address to string format and print it
   // we use ntop (network to presentation) to convert the address
   char server_addr[INET6_ADDRSTRLEN];  // String to hold IP address
-  inet_ntop(conn->ai_family, get_in_addr((struct sockaddr *)conn->ai_addr),
-            server_addr, sizeof server_addr);
+  inet_ntop(conn->ai_family, get_in_addr((struct sockaddr *)conn->ai_addr), server_addr, sizeof server_addr);
   printf("client: connecting to %s\n", server_addr);
 
   // Free the linked list of addresses as we don't need it anymore
