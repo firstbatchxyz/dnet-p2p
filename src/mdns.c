@@ -959,7 +959,7 @@ enum Mode {
   DAEMON_MODE = 4,
 };
 
-int mdns_main(int argc, const char* const* argv) {
+int mdns_main(int argc, char* const* argv) {
   // port is `41891 = 4 18 9 1 = D R I A`
   int service_port = 41891;
   // service name

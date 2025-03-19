@@ -93,3 +93,21 @@ For all available commands:
 
 - Hostname can be overwritten via `--hostname <name>` option, otherwise it is attempted to be read via a systemcall to get machine's host name.
 - Port can be overwritten via `--port <port>` option, otherwise it defaults to 41891 which stands for `dria` in alphabetic index.
+
+When the daemon is running, we can detect it with the [`dns-sd`](https://man.netbsd.org/dns-sd.1) standard tool:
+
+```sh
+dns-sd -B _dllmd local
+```
+
+We can query the services registered for dLLM with:
+
+```sh
+dns-sd -Q _dllmd._tcp.local. PTR
+```
+
+This will return a hostname within `rrdata` field of the `PTR` record. We can query that host to get more details, and we will actually see this query within our logs, if we are the `my-hostname`:
+
+```sh
+dns-sd -q my-hostname.local._dllmd._tcp.local. SRV
+```

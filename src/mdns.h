@@ -47,7 +47,7 @@ extern "C" {
 #define MDNS_MAX_SUBSTRINGS 64
 
 /// Expose main function.
-int mdns_main(int argc, const char* const* argv);
+int mdns_main(int argc, char* const* argv);
 
 /// A DNS record type for querying via mDNS.
 enum mdns_record_type {

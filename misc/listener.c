@@ -13,10 +13,17 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "util.h"
-
 #define LISTENER_MYPORT "4950"  // the port users will be connecting to
 #define LISTENER_MAXBUFLEN 100
+
+// get sockaddr, IPv4 or IPv6:
+void *get_in_addr(struct sockaddr *sa) {
+  if (sa->sa_family == AF_INET) {
+    return &(((struct sockaddr_in *)sa)->sin_addr);
+  }
+
+  return &(((struct sockaddr_in6 *)sa)->sin6_addr);
+}
 
 int listener_main(void) {
   char buf[LISTENER_MAXBUFLEN];

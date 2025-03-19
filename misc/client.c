@@ -16,7 +16,14 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "util.h"
+// get sockaddr, IPv4 or IPv6:
+void *get_in_addr(struct sockaddr *sa) {
+  if (sa->sa_family == AF_INET) {
+    return &(((struct sockaddr_in *)sa)->sin_addr);
+  }
+
+  return &(((struct sockaddr_in6 *)sa)->sin6_addr);
+}
 
 // Configuration constants
 #define CLIENT_PORT "3490"      // The port number the client will connect to
