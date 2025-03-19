@@ -1,0 +1,19 @@
+name: build
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "Makefile"
+      - "src/**"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@main
+
+      - name: Build with Makefile
+        run: make
