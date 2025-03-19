@@ -32,6 +32,8 @@ extern "C" {
 
 #define MDNS_STRING_CONST(s) (s), (sizeof((s)) - 1)
 #define MDNS_STRING_ARGS(s) s.str, s.length
+
+/// Format a string for printf with length, e.g. to be used with `%.*s`
 #define MDNS_STRING_FORMAT(s) (int)((s).length), s.str
 
 #define MDNS_POINTER_OFFSET(p, ofs) ((void*)((char*)(p) + (ptrdiff_t)(ofs)))

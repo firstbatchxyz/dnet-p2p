@@ -15,16 +15,17 @@ static char namebuffer[256];
 static char sendbuffer[1024];
 static mdns_record_txt_t txtbuffer[128];
 
-static struct sockaddr_in service_address_ipv4;
-static struct sockaddr_in6 service_address_ipv6;
-
+/// flag to indicate interface addresses has ipv4
 static int has_ipv4;
+static struct sockaddr_in service_address_ipv4;
+/// flag to indicate interface addresses has ipv6
 static int has_ipv6;
+static struct sockaddr_in6 service_address_ipv6;
 
 // flag to indicate if the daemon is running
 volatile sig_atomic_t running = 1;
 
-// Data for our service including the mDNS records
+// data for our service, including its mDNS records
 typedef struct {
   mdns_string_t service;
   mdns_string_t hostname;
@@ -46,6 +47,7 @@ static mdns_string_t ipv4_address_to_string(char* buffer, size_t capacity, const
   char service[NI_MAXSERV] = {0};
   int ret = getnameinfo((const struct sockaddr*)addr, (socklen_t)addrlen, host, NI_MAXHOST, service, NI_MAXSERV,
                         NI_NUMERICSERV | NI_NUMERICHOST);
+
   int len = 0;
   if (ret == 0) {
     if (addr->sin_port != 0)
@@ -53,11 +55,11 @@ static mdns_string_t ipv4_address_to_string(char* buffer, size_t capacity, const
     else
       len = snprintf(buffer, capacity, "%s", host);
   }
-  if (len >= (int)capacity) len = (int)capacity - 1;
-  mdns_string_t str;
-  str.str = buffer;
-  str.length = len;
-  return str;
+  if (len >= (int)capacity) {
+    len = (int)capacity - 1;
+  }
+
+  return (mdns_string_t){.str = buffer, .length = len};
 }
 
 static mdns_string_t ipv6_address_to_string(char* buffer, size_t capacity, const struct sockaddr_in6* addr,
@@ -73,11 +75,11 @@ static mdns_string_t ipv6_address_to_string(char* buffer, size_t capacity, const
     else
       len = snprintf(buffer, capacity, "%s", host);
   }
-  if (len >= (int)capacity) len = (int)capacity - 1;
-  mdns_string_t str;
-  str.str = buffer;
-  str.length = len;
-  return str;
+  if (len >= (int)capacity) {
+    len = (int)capacity - 1;
+  }
+
+  return (mdns_string_t){.str = buffer, .length = len};
 }
 
 static mdns_string_t ip_address_to_string(char* buffer, size_t capacity, const struct sockaddr* addr, size_t addrlen) {
@@ -95,49 +97,64 @@ static int query_callback(int sock, const struct sockaddr* from, size_t addrlen,
   (void)sizeof(query_id);
   (void)sizeof(name_length);
   (void)sizeof(user_data);
+
   mdns_string_t fromaddrstr = ip_address_to_string(addrbuffer, sizeof(addrbuffer), from, addrlen);
   const char* entrytype =
       (entry == MDNS_ENTRYTYPE_ANSWER) ? "answer" : ((entry == MDNS_ENTRYTYPE_AUTHORITY) ? "authority" : "additional");
   mdns_string_t entrystr = mdns_string_extract(data, size, &name_offset, entrybuffer, sizeof(entrybuffer));
-  if (rtype == MDNS_RECORDTYPE_PTR) {
-    mdns_string_t namestr =
-        mdns_record_parse_ptr(data, size, record_offset, record_length, namebuffer, sizeof(namebuffer));
-    printf("%.*s : %s %.*s PTR %.*s rclass 0x%x ttl %u length %d\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype,
-           MDNS_STRING_FORMAT(entrystr), MDNS_STRING_FORMAT(namestr), rclass, ttl, (int)record_length);
-  } else if (rtype == MDNS_RECORDTYPE_SRV) {
-    mdns_record_srv_t srv =
-        mdns_record_parse_srv(data, size, record_offset, record_length, namebuffer, sizeof(namebuffer));
-    printf("%.*s : %s %.*s SRV %.*s priority %d weight %d port %d\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype,
-           MDNS_STRING_FORMAT(entrystr), MDNS_STRING_FORMAT(srv.name), srv.priority, srv.weight, srv.port);
-  } else if (rtype == MDNS_RECORDTYPE_A) {
-    struct sockaddr_in addr;
-    mdns_record_parse_a(data, size, record_offset, record_length, &addr);
-    mdns_string_t addrstr = ipv4_address_to_string(namebuffer, sizeof(namebuffer), &addr, sizeof(addr));
-    printf("%.*s : %s %.*s A %.*s\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype, MDNS_STRING_FORMAT(entrystr),
-           MDNS_STRING_FORMAT(addrstr));
-  } else if (rtype == MDNS_RECORDTYPE_AAAA) {
-    struct sockaddr_in6 addr;
-    mdns_record_parse_aaaa(data, size, record_offset, record_length, &addr);
-    mdns_string_t addrstr = ipv6_address_to_string(namebuffer, sizeof(namebuffer), &addr, sizeof(addr));
-    printf("%.*s : %s %.*s AAAA %.*s\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype, MDNS_STRING_FORMAT(entrystr),
-           MDNS_STRING_FORMAT(addrstr));
-  } else if (rtype == MDNS_RECORDTYPE_TXT) {
-    size_t parsed = mdns_record_parse_txt(data, size, record_offset, record_length, txtbuffer,
-                                          sizeof(txtbuffer) / sizeof(mdns_record_txt_t));
-    for (size_t itxt = 0; itxt < parsed; ++itxt) {
-      if (txtbuffer[itxt].value.length) {
-        printf("%.*s : %s %.*s TXT %.*s = %.*s\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype,
-               MDNS_STRING_FORMAT(entrystr), MDNS_STRING_FORMAT(txtbuffer[itxt].key),
-               MDNS_STRING_FORMAT(txtbuffer[itxt].value));
-      } else {
-        printf("%.*s : %s %.*s TXT %.*s\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype, MDNS_STRING_FORMAT(entrystr),
-               MDNS_STRING_FORMAT(txtbuffer[itxt].key));
-      }
+
+  switch (rtype) {
+    case MDNS_RECORDTYPE_PTR: {
+      mdns_string_t namestr =
+          mdns_record_parse_ptr(data, size, record_offset, record_length, namebuffer, sizeof(namebuffer));
+      printf("%.*s : %s %.*s PTR %.*s rclass 0x%x ttl %u length %d\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype,
+             MDNS_STRING_FORMAT(entrystr), MDNS_STRING_FORMAT(namestr), rclass, ttl, (int)record_length);
+      break;
     }
-  } else {
-    printf("%.*s : %s %.*s type %u rclass 0x%x ttl %u length %d\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype,
-           MDNS_STRING_FORMAT(entrystr), rtype, rclass, ttl, (int)record_length);
+    case MDNS_RECORDTYPE_SRV: {
+      mdns_record_srv_t srv =
+          mdns_record_parse_srv(data, size, record_offset, record_length, namebuffer, sizeof(namebuffer));
+      printf("%.*s : %s %.*s SRV %.*s priority %d weight %d port %d\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype,
+             MDNS_STRING_FORMAT(entrystr), MDNS_STRING_FORMAT(srv.name), srv.priority, srv.weight, srv.port);
+      break;
+    }
+    case MDNS_RECORDTYPE_A: {
+      struct sockaddr_in addr;
+      mdns_record_parse_a(data, size, record_offset, record_length, &addr);
+      mdns_string_t addrstr = ipv4_address_to_string(namebuffer, sizeof(namebuffer), &addr, sizeof(addr));
+      printf("%.*s : %s %.*s A %.*s\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype, MDNS_STRING_FORMAT(entrystr),
+             MDNS_STRING_FORMAT(addrstr));
+      break;
+    }
+    case MDNS_RECORDTYPE_AAAA: {
+      struct sockaddr_in6 addr;
+      mdns_record_parse_aaaa(data, size, record_offset, record_length, &addr);
+      mdns_string_t addrstr = ipv6_address_to_string(namebuffer, sizeof(namebuffer), &addr, sizeof(addr));
+      printf("%.*s : %s %.*s AAAA %.*s\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype, MDNS_STRING_FORMAT(entrystr),
+             MDNS_STRING_FORMAT(addrstr));
+      break;
+    }
+    case MDNS_RECORDTYPE_TXT: {
+      size_t parsed = mdns_record_parse_txt(data, size, record_offset, record_length, txtbuffer,
+                                            sizeof(txtbuffer) / sizeof(mdns_record_txt_t));
+      for (size_t itxt = 0; itxt < parsed; ++itxt) {
+        if (txtbuffer[itxt].value.length) {
+          printf("%.*s : %s %.*s TXT %.*s = %.*s\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype,
+                 MDNS_STRING_FORMAT(entrystr), MDNS_STRING_FORMAT(txtbuffer[itxt].key),
+                 MDNS_STRING_FORMAT(txtbuffer[itxt].value));
+        } else {
+          printf("%.*s : %s %.*s TXT %.*s\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype, MDNS_STRING_FORMAT(entrystr),
+                 MDNS_STRING_FORMAT(txtbuffer[itxt].key));
+        }
+      }
+      break;
+    }
+    default:
+      printf("%.*s : %s %.*s type %u rclass 0x%x ttl %u length %d\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype,
+             MDNS_STRING_FORMAT(entrystr), rtype, rclass, ttl, (int)record_length);
+      break;
   }
+
   return 0;
 }
 
@@ -157,7 +174,7 @@ static int service_callback(int sock, const struct sockaddr* from, size_t addrle
   size_t offset = name_offset;
   mdns_string_t name = mdns_string_extract(data, size, &offset, namebuffer, sizeof(namebuffer));
 
-  const char* record_name = 0;
+  const char* record_name = NULL;
   if (rtype == MDNS_RECORDTYPE_PTR)
     record_name = "PTR";
   else if (rtype == MDNS_RECORDTYPE_SRV)
@@ -171,6 +188,7 @@ static int service_callback(int sock, const struct sockaddr* from, size_t addrle
   else if (rtype == MDNS_RECORDTYPE_ANY)
     record_name = "ANY";
   else
+    // invalid record type
     return 0;
   printf("Query %s %.*s\n", record_name, MDNS_STRING_FORMAT(name));
 
@@ -407,6 +425,7 @@ static int open_client_sockets(int* sockets, int max_sockets, int port) {
   struct ifaddrs* ifa = 0;
   if (getifaddrs(&ifaddr) < 0) printf("Unable to get interface addresses\n");
 
+  // flags to indicate if we have seen the ipv4 and ipv6 address for the first time
   int first_ipv4 = 1;
   int first_ipv6 = 1;
   for (ifa = ifaddr; ifa; ifa = ifa->ifa_next) {
@@ -535,8 +554,8 @@ static int send_dns_sd(void) {
   printf("Opened %d socket%s for DNS-SD\n", num_sockets, num_sockets > 1 ? "s" : "");
 
   printf("Sending DNS-SD discovery\n");
-  for (int isock = 0; isock < num_sockets; ++isock) {
-    if (mdns_discovery_send(sockets[isock])) printf("Failed to send DNS-DS discovery: %s\n", strerror(errno));
+  for (int i = 0; i < num_sockets; ++i) {
+    if (mdns_discovery_send(sockets[i])) printf("Failed to send DNS-DS discovery: %s\n", strerror(errno));
   }
 
   size_t capacity = 2048;
@@ -544,8 +563,7 @@ static int send_dns_sd(void) {
   void* user_data = 0;
   size_t records;
 
-  // This is a simple implementation that loops for 5 seconds or as long as we
-  // get replies
+  // loops for 5 seconds, or as long as we get replies
   int res;
   printf("Reading DNS-SD replies\n");
   do {
@@ -556,17 +574,17 @@ static int send_dns_sd(void) {
     int nfds = 0;
     fd_set readfs;
     FD_ZERO(&readfs);
-    for (int isock = 0; isock < num_sockets; ++isock) {
-      if (sockets[isock] >= nfds) nfds = sockets[isock] + 1;
-      FD_SET(sockets[isock], &readfs);
+    for (int i = 0; i < num_sockets; ++i) {
+      if (sockets[i] >= nfds) nfds = sockets[i] + 1;
+      FD_SET(sockets[i], &readfs);
     }
 
     records = 0;
     res = select(nfds, &readfs, 0, 0, &timeout);
     if (res > 0) {
-      for (int isock = 0; isock < num_sockets; ++isock) {
-        if (FD_ISSET(sockets[isock], &readfs)) {
-          records += mdns_discovery_recv(sockets[isock], buffer, capacity, query_callback, user_data);
+      for (int i = 0; i < num_sockets; ++i) {
+        if (FD_ISSET(sockets[i], &readfs)) {
+          records += mdns_discovery_recv(sockets[i], buffer, capacity, query_callback, user_data);
         }
       }
     }
@@ -574,7 +592,10 @@ static int send_dns_sd(void) {
 
   free(buffer);
 
-  for (int isock = 0; isock < num_sockets; ++isock) mdns_socket_close(sockets[isock]);
+  // close stuff
+  for (int i = 0; i < num_sockets; ++i) {
+    mdns_socket_close(sockets[i]);
+  }
   printf("Closed socket%s\n", num_sockets > 1 ? "s" : "");
 
   return 0;
@@ -702,7 +723,9 @@ static int service_mdns(const char* hostname, const char* service_name, int serv
   // Append a '.' to the service name if it does not end with one
   char* service_name_buffer = malloc(service_name_length + 2);
   memcpy(service_name_buffer, service_name, service_name_length);
-  if (service_name_buffer[service_name_length - 1] != '.') service_name_buffer[service_name_length++] = '.';
+  if (service_name_buffer[service_name_length - 1] != '.') {
+    service_name_buffer[service_name_length++] = '.';
+  }
   service_name_buffer[service_name_length] = 0;  // null-terminate
   service_name = service_name_buffer;
 
@@ -806,9 +829,9 @@ static int service_mdns(const char* hostname, const char* service_name, int serv
     int nfds = 0;
     fd_set readfs;
     FD_ZERO(&readfs);
-    for (int isock = 0; isock < num_sockets; ++isock) {
-      if (sockets[isock] >= nfds) nfds = sockets[isock] + 1;
-      FD_SET(sockets[isock], &readfs);
+    for (int i = 0; i < num_sockets; ++i) {
+      if (sockets[i] >= nfds) nfds = sockets[i] + 1;
+      FD_SET(sockets[i], &readfs);
     }
 
     // wait 100ms for each `select`
@@ -817,11 +840,11 @@ static int service_mdns(const char* hostname, const char* service_name, int serv
     timeout.tv_usec = 100000;
 
     if (select(nfds, &readfs, 0, 0, &timeout) >= 0) {
-      for (int isock = 0; isock < num_sockets; ++isock) {
-        if (FD_ISSET(sockets[isock], &readfs)) {
-          mdns_socket_listen(sockets[isock], buffer, capacity, service_callback, &service);
+      for (int i = 0; i < num_sockets; ++i) {
+        if (FD_ISSET(sockets[i], &readfs)) {
+          mdns_socket_listen(sockets[i], buffer, capacity, service_callback, &service);
         }
-        FD_SET(sockets[isock], &readfs);
+        FD_SET(sockets[i], &readfs);
       }
     } else {
       break;
@@ -839,8 +862,9 @@ static int service_mdns(const char* hostname, const char* service_name, int serv
     additional[additional_count++] = service.txt_record[0];
     additional[additional_count++] = service.txt_record[1];
 
-    for (int isock = 0; isock < num_sockets; ++isock)
-      mdns_goodbye_multicast(sockets[isock], buffer, capacity, service.record_ptr, 0, 0, additional, additional_count);
+    for (int i = 0; i < num_sockets; ++i) {
+      mdns_goodbye_multicast(sockets[i], buffer, capacity, service.record_ptr, 0, 0, additional, additional_count);
+    }
   }
 
   free(buffer);
@@ -873,9 +897,9 @@ static int dump_mdns(void) {
     int nfds = 0;
     fd_set readfs;
     FD_ZERO(&readfs);
-    for (int isock = 0; isock < num_sockets; ++isock) {
-      if (sockets[isock] >= nfds) nfds = sockets[isock] + 1;
-      FD_SET(sockets[isock], &readfs);
+    for (int i = 0; i < num_sockets; ++i) {
+      if (sockets[i] >= nfds) nfds = sockets[i] + 1;
+      FD_SET(sockets[i], &readfs);
     }
 
     struct timeval timeout;
@@ -883,11 +907,11 @@ static int dump_mdns(void) {
     timeout.tv_usec = 100000;
 
     if (select(nfds, &readfs, 0, 0, &timeout) >= 0) {
-      for (int isock = 0; isock < num_sockets; ++isock) {
-        if (FD_ISSET(sockets[isock], &readfs)) {
-          mdns_socket_listen(sockets[isock], buffer, capacity, dump_callback, 0);
+      for (int i = 0; i < num_sockets; ++i) {
+        if (FD_ISSET(sockets[i], &readfs)) {
+          mdns_socket_listen(sockets[i], buffer, capacity, dump_callback, 0);
         }
-        FD_SET(sockets[isock], &readfs);
+        FD_SET(sockets[i], &readfs);
       }
     } else {
       break;
@@ -897,12 +921,27 @@ static int dump_mdns(void) {
   free(buffer);
 
   // close sockets
-  for (int isock = 0; isock < num_sockets; ++isock) {
-    mdns_socket_close(sockets[isock]);
+  for (int i = 0; i < num_sockets; ++i) {
+    mdns_socket_close(sockets[i]);
   }
   printf("Closed socket%s\n", num_sockets > 1 ? "s" : "");
 
   return 0;
+}
+
+/** 
+ * Main daemon code.
+ * 
+ * This function will query for a service, and if it gets no responses within a reasonable attempt count,
+ * it will become a service on its own. A service will basically act like the `--service` option.
+ * 
+ * If it gets a response to service discovery, it will act like a client. It will do 2 things:
+ * - Announce that its here with its own device specs etc.
+ * - Wait in idle mode.
+ * 
+ */
+static int run_daemon() {
+  // TODO: !!!!
 }
 
 /** Signal handler to gracefully stop the service. */
@@ -938,7 +977,7 @@ int mdns_main(int argc, const char* const* argv) {
   if (gethostname(hostname_buffer, hostname_size) == 0) {
     hostname = hostname_buffer;
   } else {
-    perror("gethostname failed");
+    perror("gethostname");
     return -1;
   }
 
@@ -964,7 +1003,7 @@ int mdns_main(int argc, const char* const* argv) {
         query[query_count].name = argv[iarg++];
         query[query_count].type = MDNS_RECORDTYPE_PTR;
         if (iarg < argc) {
-          mdns_record_type_t record_type = 0;
+          mdns_record_type_t record_type = MDNS_RECORDTYPE_IGNORE;
           if (strcmp(query[query_count].name, "PTR") == 0)
             record_type = MDNS_RECORDTYPE_PTR;
           else if (strcmp(query[query_count].name, "SRV") == 0)
@@ -974,7 +1013,7 @@ int mdns_main(int argc, const char* const* argv) {
           else if (strcmp(query[query_count].name, "AAAA") == 0)
             record_type = MDNS_RECORDTYPE_AAAA;
 
-          if (record_type != 0) {
+          if (record_type != MDNS_RECORDTYPE_IGNORE) {
             query[query_count].type = record_type;
             query[query_count].name = argv[iarg++];
           }
@@ -1005,6 +1044,7 @@ int mdns_main(int argc, const char* const* argv) {
     }
   }
 
+  // run the respective command
   int ret = 0;
   switch (mode) {
     case DISCOVERY_MODE:
@@ -1018,6 +1058,9 @@ int mdns_main(int argc, const char* const* argv) {
       break;
     case DUMP_MODE:
       ret = dump_mdns();
+      break;
+    case DAEMON_MODE:
+      ret = run_daemon();
       break;
     default:
       fprintf(stderr, "Invalid mode: %d\n", mode);
