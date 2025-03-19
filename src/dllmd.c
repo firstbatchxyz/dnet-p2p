@@ -14,7 +14,6 @@
  * time after detecting leader failure before attempting to become the new
  * leader, helping to avoid election conflicts.
  */
-
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netdb.h>
@@ -120,27 +119,6 @@ static bool sockaddr_equal(const struct sockaddr* a, const struct sockaddr* b) {
   }
 }
 
-/// Convert IP address to string representation.
-static mdns_string_t ip_address_to_string(char* buffer, size_t capacity, const struct sockaddr* addr,
-                                          socklen_t addrlen) {
-  char host[NI_MAXHOST] = {0};
-  char service[NI_MAXSERV] = {0};
-  int ret = getnameinfo(addr, addrlen, host, NI_MAXHOST, service, NI_MAXSERV, NI_NUMERICSERV | NI_NUMERICHOST);
-  int len = 0;
-
-  if (ret == 0) {
-    if (addr->sa_family == AF_INET)
-      len = snprintf(buffer, capacity, "%s:%s", host, service);
-    else if (addr->sa_family == AF_INET6)
-      len = snprintf(buffer, capacity, "[%s]:%s", host, service);
-  }
-  if (len >= (int)capacity) {
-    len = (int)capacity - 1;
-  }
-
-  return (mdns_string_t){.str = buffer, .length = len};
-}
-
 int dllmd_main(int argc, char* argv[]) {
   // silence unused args (we may use them later)
   (void)argc;
@@ -150,30 +128,26 @@ int dllmd_main(int argc, char* argv[]) {
   memset(&service_node, 0, sizeof(service_node));
   memset(known_nodes, 0, sizeof(known_nodes));
 
+  // get hostname (we enforce it), it is very unlikely that mutliple devices have the same hostname
   if (gethostname(hostname_buffer, sizeof(hostname_buffer)) != 0) {
     perror("gethostname");
     return 1;
   }
-  printf("DLLMD started on host: %s\n", hostname_buffer);
+  printf("ddlmd started on host: %s\n", hostname_buffer);
 
   // set up signal handler for SIGINT
   signal(SIGINT, signal_handler);
+
+  // make a query to see if there is an existing service
+  printf("Querying for existing service nodes...\n");
 
   is_running = true;
   while (is_running) {
     time_t current_time = get_current_time();
 
-    // If client, ping service periodically
-    // if (node_type == NODE_TYPE_CLIENT) {
-    //   if (current_time - last_ping_time >= PING_INTERVAL) {
-    //     send_ping();
-    //     check_service_health();
-    //   }
-    // }
+    // TODO: !!!
 
-    // process_incoming_messages();
-
-    // Sleep a bit to avoid busy waiting
+    // sleep a bit to avoid busy waiting
     usleep(10000);  // 10ms
   }
 
