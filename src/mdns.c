@@ -9,6 +9,7 @@
 #include <sys/time.h>
 
 #include "util.h"
+#include "sockets.h"
 
 // static buffers
 static char addrbuffer[64];
@@ -17,26 +18,19 @@ static char namebuffer[256];
 static char sendbuffer[1024];
 static mdns_record_txt_t txtbuffer[128];
 
-/// flag to indicate interface addresses has ipv4
-static int has_ipv4;
-static struct sockaddr_in service_address_ipv4;
-
-/// flag to indicate interface addresses has ipv6
-static int has_ipv6;
-static struct sockaddr_in6 service_address_ipv6;
-
 // flag to indicate if the daemon is running
 static volatile sig_atomic_t is_running = 1;
 
-// data for our service, including its mDNS records
+// data for our service, including its mDNS records (one of each)
 typedef struct {
   mdns_string_t service;
-  mdns_string_t hostname;
   mdns_string_t service_instance;
+  mdns_string_t hostname;
   mdns_string_t hostname_qualified;
+  int port;
   struct sockaddr_in address_ipv4;
   struct sockaddr_in6 address_ipv6;
-  int port;
+  /* records */
   mdns_record_t record_ptr;
   mdns_record_t record_srv;
   mdns_record_t record_a;
@@ -44,15 +38,15 @@ typedef struct {
   mdns_record_t txt_record[2];
 } service_t;
 
-// Callback handling parsing answers to queries sent
+/** Callback handling parsing answers to queries sent. */
 static int query_callback(int sock, const struct sockaddr* from, size_t addrlen, mdns_entry_type_t entry,
                           uint16_t query_id, uint16_t rtype, uint16_t rclass, uint32_t ttl, const void* data,
                           size_t size, size_t name_offset, size_t name_length, size_t record_offset,
                           size_t record_length, void* user_data) {
-  (void)sizeof(sock);
-  (void)sizeof(query_id);
-  (void)sizeof(name_length);
-  (void)sizeof(user_data);
+  (void)query_id;
+  (void)sock;
+  (void)name_length;
+  (void)user_data;
 
   mdns_string_t fromaddrstr = ip_address_to_string(addrbuffer, sizeof(addrbuffer), from, addrlen);
   const char* entrytype =
@@ -364,8 +358,12 @@ static int dump_callback(int sock, const struct sockaddr* from, size_t addrlen, 
 
 // Send a DNS-SD query
 static int send_dns_sd(void) {
+  struct sockaddr_in service_address_ipv4 = {0};
+  struct sockaddr_in6 service_address_ipv6 = {0};
+
   int sockets[32];
-  int num_sockets = open_client_sockets(sockets, sizeof(sockets) / sizeof(sockets[0]), 0);
+  int num_sockets = open_client_sockets(sockets, sizeof(sockets) / sizeof(sockets[0]), 0, &service_address_ipv4,
+                                        &service_address_ipv6);
   if (num_sockets <= 0) {
     printf("Failed to open any client sockets\n");
     return -1;
@@ -426,11 +424,14 @@ static int send_dns_sd(void) {
 
 // Send a mDNS query
 static int send_mdns_query(mdns_query_t* query, size_t count) {
+  struct sockaddr_in service_address_ipv4 = {0};
+  struct sockaddr_in6 service_address_ipv6 = {0};
   int sockets[32];
   int query_id[32];
 
   // create client sockets for each query
-  int num_sockets = open_client_sockets(sockets, sizeof(sockets) / sizeof(sockets[0]), 0);
+  int num_sockets = open_client_sockets(sockets, sizeof(sockets) / sizeof(sockets[0]), 0, &service_address_ipv4,
+                                        &service_address_ipv6);
   if (num_sockets <= 0) {
     printf("Failed to open any client sockets\n");
     return -1;
@@ -531,9 +532,13 @@ static int send_mdns_query(mdns_query_t* query, size_t count) {
 
 // Provide a mDNS service, answering incoming DNS-SD and mDNS queries
 static int service_mdns(const char* hostname, const char* service_name, int service_port) {
+  struct sockaddr_in service_address_ipv4 = {0};
+  struct sockaddr_in6 service_address_ipv6 = {0};
+
   // open service sockets
   int sockets[32];
-  int num_sockets = open_service_sockets(sockets, sizeof(sockets) / sizeof(sockets[0]));
+  int num_sockets =
+      open_service_sockets(sockets, sizeof(sockets) / sizeof(sockets[0]), &service_address_ipv4, &service_address_ipv6);
   if (num_sockets <= 0) {
     printf("Failed to open any service sockets\n");
     return -1;
@@ -718,8 +723,12 @@ static int service_mdns(const char* hostname, const char* service_name, int serv
 
 // Dump all incoming mDNS queries and answers
 static int dump_mdns(void) {
+  struct sockaddr_in service_address_ipv4 = {0};
+  struct sockaddr_in6 service_address_ipv6 = {0};
+
   int sockets[32];
-  int num_sockets = open_service_sockets(sockets, sizeof(sockets) / sizeof(sockets[0]));
+  int num_sockets =
+      open_service_sockets(sockets, sizeof(sockets) / sizeof(sockets[0]), &service_address_ipv4, &service_address_ipv6);
   if (num_sockets <= 0) {
     printf("Failed to open any client sockets\n");
     return -1;
@@ -764,23 +773,6 @@ static int dump_mdns(void) {
     mdns_socket_close(sockets[i]);
   }
   printf("Closed socket%s\n", num_sockets > 1 ? "s" : "");
-
-  return 0;
-}
-
-/** 
- * Main daemon code.
- * 
- * This function will query for a service, and if it gets no responses within a reasonable attempt count,
- * it will become a service on its own. A service will basically act like the `--service` option.
- * 
- * If it gets a response to service discovery, it will act like a client. It will do 2 things:
- * - Announce that its here with its own device specs etc.
- * - Wait in idle mode.
- * 
- */
-static int run_daemon() {
-  // TODO: !!!!
 
   return 0;
 }
@@ -904,7 +896,7 @@ int mdns_main(int argc, char* const* argv) {
       ret = dump_mdns();
       break;
     case DAEMON_MODE:
-      ret = run_daemon();
+      printf("not yet\n");
       break;
     default:
       fprintf(stderr, "Invalid mode: %d\n", mode);

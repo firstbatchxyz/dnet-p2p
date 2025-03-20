@@ -2,6 +2,7 @@
 #define DLLMD_UTIL_H
 
 #include <netdb.h>
+#include <stdio.h>
 
 #include "mdns.h"
 

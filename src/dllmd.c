@@ -31,6 +31,7 @@
 
 #include "mdns.h"
 #include "util.h"
+#include "sockets.h"
 
 /// `41891 = 4 18 9 1 = D R I A`
 #define DLLMD_PORT "41891"

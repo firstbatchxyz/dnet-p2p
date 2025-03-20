@@ -1,15 +1,13 @@
 #include "sockets.h"
 
-#include <arpa/inet.h>
-#include <ifaddrs.h>
-#include <net/if.h>
-
-#include "util.h"
-
-/// Open sockets for sending one-shot multicast queries from an ephemeral port
-static int open_client_sockets(int* sockets, int max_sockets, int port) {
-  // When sending, each socket can only send to one network interface
-  // Thus we need to open one socket for each interface and address family
+/** 
+ * Open sockets for sending one-shot multicast queries from an ephemeral port 
+ * 
+ * When sending, each socket can only send to one network interface.
+ * Thus we need to open one socket for each interface and address family.
+ */
+int open_client_sockets(int* sockets, int max_sockets, int port, struct sockaddr_in* service_address_ipv4,
+                        struct sockaddr_in6* service_address_ipv6) {
   int num_sockets = 0;
 
   // inferface addresses
@@ -17,11 +15,16 @@ static int open_client_sockets(int* sockets, int max_sockets, int port) {
   struct ifaddrs* ifa = 0;
   if (getifaddrs(&ifaddr) < 0) {
     printf("Unable to get interface addresses\n");
+    return -1;
   }
 
+  // flags to indicate if we have seen an ipv4 and ipv6 address
+  bool has_ipv4 = false;
+  bool has_ipv6 = false;
+
   // flags to indicate if we have seen the ipv4 and ipv6 address for the first time
-  int first_ipv4 = 1;
-  int first_ipv6 = 1;
+  bool first_ipv6 = true;
+  bool first_ipv4 = true;
   for (ifa = ifaddr; ifa; ifa = ifa->ifa_next) {
     // ensure we have an address and it is up and multicast capable
     if (!ifa->ifa_addr) {
@@ -38,21 +41,22 @@ static int open_client_sockets(int* sockets, int max_sockets, int port) {
     if (ifa->ifa_addr->sa_family == AF_INET) {
       struct sockaddr_in* saddr = (struct sockaddr_in*)ifa->ifa_addr;
       if (saddr->sin_addr.s_addr != htonl(INADDR_LOOPBACK)) {
-        int log_addr = 0;
+        bool log_addr = false;
         if (first_ipv4) {
-          service_address_ipv4 = *saddr;
-          first_ipv4 = 0;
-          log_addr = 1;
+          // service_address_ipv4 = *saddr;
+          service_address_ipv4 = saddr;
+          first_ipv4 = false;
+          log_addr = true;
         }
-        has_ipv4 = 1;
+        has_ipv4 = true;
         if (num_sockets < max_sockets) {
           saddr->sin_port = htons(port);
           int sock = mdns_socket_open_ipv4(saddr);
           if (sock >= 0) {
             sockets[num_sockets++] = sock;
-            log_addr = 1;
+            log_addr = true;
           } else {
-            log_addr = 0;
+            log_addr = false;
           }
         }
         if (log_addr) {
@@ -70,21 +74,22 @@ static int open_client_sockets(int* sockets, int max_sockets, int port) {
       static const unsigned char localhost[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
       static const unsigned char localhost_mapped[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 0x7f, 0, 0, 1};
       if (memcmp(saddr->sin6_addr.s6_addr, localhost, 16) && memcmp(saddr->sin6_addr.s6_addr, localhost_mapped, 16)) {
-        int log_addr = 0;
+        bool log_addr = false;
         if (first_ipv6) {
-          service_address_ipv6 = *saddr;
-          first_ipv6 = 0;
-          log_addr = 1;
+          // service_address_ipv6 = *saddr;
+          service_address_ipv6 = saddr;
+          first_ipv6 = false;
+          log_addr = true;
         }
-        has_ipv6 = 1;
+        has_ipv6 = true;
         if (num_sockets < max_sockets) {
           saddr->sin6_port = htons(port);
           int sock = mdns_socket_open_ipv6(saddr);
           if (sock >= 0) {
             sockets[num_sockets++] = sock;
-            log_addr = 1;
+            log_addr = true;
           } else {
-            log_addr = 0;
+            log_addr = false;
           }
         }
         if (log_addr) {
@@ -101,24 +106,27 @@ static int open_client_sockets(int* sockets, int max_sockets, int port) {
   return num_sockets;
 }
 
-/** Open sockets to listen to incoming mDNS queries on port 5353. 
+/**
+ * Open sockets to listen to incoming mDNS queries on port 5353. 
  * 
  * @param sockets The array to store the opened sockets.
  * @param max_sockets The maximum number of sockets to open.
  * @return The number of opened sockets.
  */
-static int open_service_sockets(int* sockets, int max_sockets) {
+int open_service_sockets(int* sockets, int max_sockets, struct sockaddr_in* service_address_ipv4,
+                         struct sockaddr_in6* service_address_ipv6) {
   // When recieving, each socket can recieve data from all network interfaces
   // Thus we only need to open one socket for each address family
   int num_sockets = 0;
 
   // Call the client socket function to enumerate and get local addresses,
   // but not open the actual sockets
-  open_client_sockets(0, 0, 0);
+  open_client_sockets(NULL, 0, 0, service_address_ipv4, service_address_ipv6);
 
   if (num_sockets < max_sockets) {
     struct sockaddr_in sock_addr;
     memset(&sock_addr, 0, sizeof(struct sockaddr_in));
+
     sock_addr.sin_family = AF_INET;
     sock_addr.sin_addr.s_addr = INADDR_ANY;
     sock_addr.sin_port = htons(MDNS_PORT);
