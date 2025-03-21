@@ -1,68 +1,93 @@
-//! A mDNS query client.
-//!
-//! Run with:
-//!
-//!     cargo run --example query <service_type_without_domain>
-//!
-//! Example:
-//!
-//!     cargo run --example query _my-service._udp
-//!
-//! Note: there is no '.' at the end as the program adds ".local."
-//! automatically.
-//!
-//! Keeps listening for new events.
+use clap::Subcommand;
 
-use mdns_sd::{ServiceDaemon, ServiceEvent};
+use clap::Parser;
+use dllmd::query_services;
+use dllmd::register_service;
+use gethostname::gethostname;
 
-fn main() {
-    env_logger::builder().format_timestamp_millis().init();
+/// [DNS-SD meta query](https://www.rfc-editor.org/rfc/rfc6763.html#section-9)
+const DNS_SD_SERVICE: &str = "_services._dns-sd._udp.local.";
 
-    // Create a daemon
-    let mdns = ServiceDaemon::new().expect("Failed to create daemon");
+#[derive(Subcommand)]
+pub enum Commands {
+    /// Query existing services.
+    Query {
+        /// Name of the service to query.
+        /// Must end with `._udp.local.` or `._tcp.local.`.
+        #[arg(default_value = DNS_SD_SERVICE)]
+        service: String,
+    },
+    /// Become a service.
+    Register {
+        /// Must end with `._udp.local.` or `._tcp.local.`.
+        #[arg()]
+        service: String,
+        /// Name of the service instance.
+        #[arg()]
+        instance: String,
 
-    let mut service_type = match std::env::args().nth(1) {
-        Some(arg) => arg,
-        None => {
-            print_usage();
-            return;
-        }
-    };
+        #[arg(long)]
+        /// Optional hostname of the service, defaults to machine host name.
+        hostname: Option<String>,
 
-    // Browse for a service type.
-    service_type.push_str(".local.");
-    let receiver = mdns.browse(&service_type).expect("Failed to browse");
+        /// Whether to unregister the service after a while.
+        #[arg(short, long)]
+        unregister: bool,
 
-    let now = std::time::Instant::now();
-    while let Ok(event) = receiver.recv() {
-        match event {
-            ServiceEvent::ServiceResolved(info) => {
-                println!(
-                    "At {:?}: Resolved a new service: {}\n host: {}\n port: {}",
-                    now.elapsed(),
-                    info.get_fullname(),
-                    info.get_hostname(),
-                    info.get_port(),
-                );
-                for addr in info.get_addresses().iter() {
-                    println!(" Address: {}", addr);
-                }
-                for prop in info.get_properties().iter() {
-                    println!(" Property: {}", prop);
-                }
-            }
-            other_event => {
-                println!("At {:?}: {:?}", now.elapsed(), &other_event);
-            }
-        }
-    }
+        /// Whether to disable IPv6.
+        #[arg(short, long)]
+        disable_ipv6: bool,
+    },
+    /// Run the dLLM daemon.
+    Daemon {
+        #[arg(long)]
+        /// Optional hostname of the service, defaults to machine host name.
+        hostname: Option<String>,
+    },
 }
 
-fn print_usage() {
-    println!("Usage: cargo run --example query <service_type_without_domain_postfix>");
-    println!("Example: ");
-    println!("cargo run --example query _my-service._udp");
-    println!();
-    println!("You can also do a meta-query per RFC 6763 to find which services are available:");
-    println!("cargo run --example query _services._dns-sd._udp");
+#[derive(Parser)]
+#[command(name = env!("CARGO_PKG_NAME"), version, about)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[tokio::main]
+async fn main() {
+    env_logger::builder()
+        .format_timestamp_millis()
+        .filter(None, log::LevelFilter::Off)
+        .filter_module("dllmd", log::LevelFilter::Debug)
+        .filter_module("mdns_sd", log::LevelFilter::Info) // enable Debug
+        .parse_default_env()
+        .init();
+
+    let args = Cli::parse();
+    match args.command {
+        Commands::Query { service } => {
+            query_services(service);
+        }
+        Commands::Register {
+            service,
+            instance,
+            hostname,
+            unregister,
+            disable_ipv6,
+        } => {
+            let hostname = hostname.unwrap_or_else(|| gethostname().to_string_lossy().to_string());
+            register_service(service, instance, hostname, unregister, disable_ipv6);
+        }
+        Commands::Daemon { hostname } => {
+            println!("hostname: {:?}", gethostname());
+            // TODO: !!!
+            let hostname = hostname.unwrap_or_else(|| {
+                gethostname()
+                    .to_string_lossy()
+                    .to_string()
+                    .replace(".local", ".local.")
+            });
+            dllmd::run_daemon(hostname).await;
+        }
+    }
 }
