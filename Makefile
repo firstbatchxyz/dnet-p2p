@@ -47,6 +47,8 @@ clean:
 format:
 		clang-format -i $(SRCS)
 
-# .PHONY tells Make these aren't real files
-# prevents conflicts with files named 'all' or 'clean'
-.PHONY: all clean
+# Clean and make again
+again:
+		@make clean && make
+
+.PHONY: all clean again

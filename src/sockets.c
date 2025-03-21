@@ -14,13 +14,13 @@ int open_client_sockets(int* sockets, int max_sockets, int port, struct sockaddr
   struct ifaddrs* ifaddr = 0;
   struct ifaddrs* ifa = 0;
   if (getifaddrs(&ifaddr) < 0) {
-    printf("Unable to get interface addresses\n");
+    perror("getifaddrs");
     return -1;
   }
 
   // flags to indicate if we have seen an ipv4 and ipv6 address
-  bool has_ipv4 = false;
-  bool has_ipv6 = false;
+  // bool has_ipv4 = false;
+  // bool has_ipv6 = false;
 
   // flags to indicate if we have seen the ipv4 and ipv6 address for the first time
   bool first_ipv6 = true;
@@ -48,7 +48,7 @@ int open_client_sockets(int* sockets, int max_sockets, int port, struct sockaddr
           first_ipv4 = false;
           log_addr = true;
         }
-        has_ipv4 = true;
+        // has_ipv4 = true;
         if (num_sockets < max_sockets) {
           saddr->sin_port = htons(port);
           int sock = mdns_socket_open_ipv4(saddr);
@@ -81,7 +81,7 @@ int open_client_sockets(int* sockets, int max_sockets, int port, struct sockaddr
           first_ipv6 = false;
           log_addr = true;
         }
-        has_ipv6 = true;
+        // has_ipv6 = true;
         if (num_sockets < max_sockets) {
           saddr->sin6_port = htons(port);
           int sock = mdns_socket_open_ipv6(saddr);

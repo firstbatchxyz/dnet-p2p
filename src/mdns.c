@@ -1,8 +1,8 @@
 #include "mdns.h"
 
 #include <errno.h>
-#include <ifaddrs.h>
 #include <net/if.h>
+#include <ifaddrs.h>
 #include <netdb.h>
 #include <signal.h>
 #include <stdio.h>
@@ -10,6 +10,10 @@
 
 #include "util.h"
 #include "sockets.h"
+
+// commands
+#include "dump_cmd.h"
+// #include "query_cmd.h"
 
 // static buffers
 static char addrbuffer[64];
@@ -30,83 +34,14 @@ typedef struct {
   int port;
   struct sockaddr_in address_ipv4;
   struct sockaddr_in6 address_ipv6;
-  /* records */
+  /* standard records */
   mdns_record_t record_ptr;
   mdns_record_t record_srv;
   mdns_record_t record_a;
   mdns_record_t record_aaaa;
+  /* additional TXT records */
   mdns_record_t txt_record[2];
 } service_t;
-
-/** Callback handling parsing answers to queries sent. */
-static int query_callback(int sock, const struct sockaddr* from, size_t addrlen, mdns_entry_type_t entry,
-                          uint16_t query_id, uint16_t rtype, uint16_t rclass, uint32_t ttl, const void* data,
-                          size_t size, size_t name_offset, size_t name_length, size_t record_offset,
-                          size_t record_length, void* user_data) {
-  (void)query_id;
-  (void)sock;
-  (void)name_length;
-  (void)user_data;
-
-  mdns_string_t fromaddrstr = ip_address_to_string(addrbuffer, sizeof(addrbuffer), from, addrlen);
-  const char* entrytype =
-      (entry == MDNS_ENTRYTYPE_ANSWER) ? "answer" : ((entry == MDNS_ENTRYTYPE_AUTHORITY) ? "authority" : "additional");
-  mdns_string_t entrystr = mdns_string_extract(data, size, &name_offset, entrybuffer, sizeof(entrybuffer));
-
-  switch (rtype) {
-    case MDNS_RECORDTYPE_PTR: {
-      mdns_string_t namestr =
-          mdns_record_parse_ptr(data, size, record_offset, record_length, namebuffer, sizeof(namebuffer));
-      printf("%.*s : %s %.*s PTR %.*s rclass 0x%x ttl %u length %d\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype,
-             MDNS_STRING_FORMAT(entrystr), MDNS_STRING_FORMAT(namestr), rclass, ttl, (int)record_length);
-      break;
-    }
-    case MDNS_RECORDTYPE_SRV: {
-      mdns_record_srv_t srv =
-          mdns_record_parse_srv(data, size, record_offset, record_length, namebuffer, sizeof(namebuffer));
-      printf("%.*s : %s %.*s SRV %.*s priority %d weight %d port %d\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype,
-             MDNS_STRING_FORMAT(entrystr), MDNS_STRING_FORMAT(srv.name), srv.priority, srv.weight, srv.port);
-      break;
-    }
-    case MDNS_RECORDTYPE_A: {
-      struct sockaddr_in addr;
-      mdns_record_parse_a(data, size, record_offset, record_length, &addr);
-      mdns_string_t addrstr = ipv4_address_to_string(namebuffer, sizeof(namebuffer), &addr, sizeof(addr));
-      printf("%.*s : %s %.*s A %.*s\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype, MDNS_STRING_FORMAT(entrystr),
-             MDNS_STRING_FORMAT(addrstr));
-      break;
-    }
-    case MDNS_RECORDTYPE_AAAA: {
-      struct sockaddr_in6 addr;
-      mdns_record_parse_aaaa(data, size, record_offset, record_length, &addr);
-      mdns_string_t addrstr = ipv6_address_to_string(namebuffer, sizeof(namebuffer), &addr, sizeof(addr));
-      printf("%.*s : %s %.*s AAAA %.*s\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype, MDNS_STRING_FORMAT(entrystr),
-             MDNS_STRING_FORMAT(addrstr));
-      break;
-    }
-    case MDNS_RECORDTYPE_TXT: {
-      size_t parsed = mdns_record_parse_txt(data, size, record_offset, record_length, txtbuffer,
-                                            sizeof(txtbuffer) / sizeof(mdns_record_txt_t));
-      for (size_t itxt = 0; itxt < parsed; ++itxt) {
-        if (txtbuffer[itxt].value.length) {
-          printf("%.*s : %s %.*s TXT %.*s = %.*s\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype,
-                 MDNS_STRING_FORMAT(entrystr), MDNS_STRING_FORMAT(txtbuffer[itxt].key),
-                 MDNS_STRING_FORMAT(txtbuffer[itxt].value));
-        } else {
-          printf("%.*s : %s %.*s TXT %.*s\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype, MDNS_STRING_FORMAT(entrystr),
-                 MDNS_STRING_FORMAT(txtbuffer[itxt].key));
-        }
-      }
-      break;
-    }
-    default:
-      printf("%.*s : %s %.*s type %u rclass 0x%x ttl %u length %d\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype,
-             MDNS_STRING_FORMAT(entrystr), rtype, rclass, ttl, (int)record_length);
-      break;
-  }
-
-  return 0;
-}
 
 // Callback handling questions incoming on service sockets
 static int service_callback(int sock, const struct sockaddr* from, size_t addrlen, mdns_entry_type_t entry,
@@ -126,8 +61,8 @@ static int service_callback(int sock, const struct sockaddr* from, size_t addrle
   size_t offset = name_offset;
   mdns_string_t name = mdns_string_extract(data, size, &offset, namebuffer, sizeof(namebuffer));
 
-  const char record_name[32];
-  if (rtype_to_string(record_name, 32, rtype)) {
+  const char record_name[RECORDNAME_SIZE];
+  if (rtype_to_string(record_name, rtype)) {
     // invalid record type
     return 0;
   }
@@ -328,30 +263,72 @@ static int service_callback(int sock, const struct sockaddr* from, size_t addrle
   return 0;
 }
 
-// Callback handling questions and answers dump
-static int dump_callback(int sock, const struct sockaddr* from, size_t addrlen, mdns_entry_type_t entry,
-                         uint16_t query_id, uint16_t rtype, uint16_t rclass, uint32_t ttl, const void* data,
-                         size_t size, size_t name_offset, size_t name_length, size_t record_offset,
-                         size_t record_length, void* user_data) {
+/** Callback handling parsing answers to queries sent. */
+static int query_callback(int sock, const struct sockaddr* from, size_t addrlen, mdns_entry_type_t entry,
+                          uint16_t query_id, uint16_t rtype, uint16_t rclass, uint32_t ttl, const void* data,
+                          size_t size, size_t name_offset, size_t name_length, size_t record_offset,
+                          size_t record_length, void* user_data) {
+  (void)query_id;
+  (void)sock;
+  (void)name_length;
+  (void)user_data;
+
   mdns_string_t fromaddrstr = ip_address_to_string(addrbuffer, sizeof(addrbuffer), from, addrlen);
+  const char* entrytype =
+      (entry == MDNS_ENTRYTYPE_ANSWER) ? "answer" : ((entry == MDNS_ENTRYTYPE_AUTHORITY) ? "authority" : "additional");
+  mdns_string_t entrystr = mdns_string_extract(data, size, &name_offset, entrybuffer, sizeof(entrybuffer));
 
-  size_t offset = name_offset;
-  mdns_string_t name = mdns_string_extract(data, size, &offset, namebuffer, sizeof(namebuffer));
-
-  const char record_name[32];
-  rtype_to_string(&record_name, 32, rtype);  // ignore return code
-
-  const char* entry_type = "Question";
-  if (entry == MDNS_ENTRYTYPE_ANSWER) {
-    entry_type = "Answer";
-  } else if (entry == MDNS_ENTRYTYPE_AUTHORITY) {
-    entry_type = "Authority";
-  } else if (entry == MDNS_ENTRYTYPE_ADDITIONAL) {
-    entry_type = "Additional";
+  switch (rtype) {
+    case MDNS_RECORDTYPE_PTR: {
+      mdns_string_t namestr =
+          mdns_record_parse_ptr(data, size, record_offset, record_length, namebuffer, sizeof(namebuffer));
+      printf("%.*s : %s %.*s PTR %.*s rclass 0x%x ttl %u length %d\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype,
+             MDNS_STRING_FORMAT(entrystr), MDNS_STRING_FORMAT(namestr), rclass, ttl, (int)record_length);
+      break;
+    }
+    case MDNS_RECORDTYPE_SRV: {
+      mdns_record_srv_t srv =
+          mdns_record_parse_srv(data, size, record_offset, record_length, namebuffer, sizeof(namebuffer));
+      printf("%.*s : %s %.*s SRV %.*s priority %d weight %d port %d\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype,
+             MDNS_STRING_FORMAT(entrystr), MDNS_STRING_FORMAT(srv.name), srv.priority, srv.weight, srv.port);
+      break;
+    }
+    case MDNS_RECORDTYPE_A: {
+      struct sockaddr_in addr;
+      mdns_record_parse_a(data, size, record_offset, record_length, &addr);
+      mdns_string_t addrstr = ipv4_address_to_string(namebuffer, sizeof(namebuffer), &addr, sizeof(addr));
+      printf("%.*s : %s %.*s A %.*s\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype, MDNS_STRING_FORMAT(entrystr),
+             MDNS_STRING_FORMAT(addrstr));
+      break;
+    }
+    case MDNS_RECORDTYPE_AAAA: {
+      struct sockaddr_in6 addr;
+      mdns_record_parse_aaaa(data, size, record_offset, record_length, &addr);
+      mdns_string_t addrstr = ipv6_address_to_string(namebuffer, sizeof(namebuffer), &addr, sizeof(addr));
+      printf("%.*s : %s %.*s AAAA %.*s\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype, MDNS_STRING_FORMAT(entrystr),
+             MDNS_STRING_FORMAT(addrstr));
+      break;
+    }
+    case MDNS_RECORDTYPE_TXT: {
+      size_t parsed = mdns_record_parse_txt(data, size, record_offset, record_length, txtbuffer,
+                                            sizeof(txtbuffer) / sizeof(mdns_record_txt_t));
+      for (size_t itxt = 0; itxt < parsed; ++itxt) {
+        if (txtbuffer[itxt].value.length) {
+          printf("%.*s : %s %.*s TXT %.*s = %.*s\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype,
+                 MDNS_STRING_FORMAT(entrystr), MDNS_STRING_FORMAT(txtbuffer[itxt].key),
+                 MDNS_STRING_FORMAT(txtbuffer[itxt].value));
+        } else {
+          printf("%.*s : %s %.*s TXT %.*s\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype, MDNS_STRING_FORMAT(entrystr),
+                 MDNS_STRING_FORMAT(txtbuffer[itxt].key));
+        }
+      }
+      break;
+    }
+    default:
+      printf("%.*s : %s %.*s type %u rclass 0x%x ttl %u length %d\n", MDNS_STRING_FORMAT(fromaddrstr), entrytype,
+             MDNS_STRING_FORMAT(entrystr), rtype, rclass, ttl, (int)record_length);
+      break;
   }
-
-  printf("%.*s: %s %s %.*s rclass 0x%x ttl %u\n", MDNS_STRING_FORMAT(fromaddrstr), entry_type, record_name,
-         MDNS_STRING_FORMAT(name), (unsigned int)rclass, ttl);
 
   return 0;
 }
@@ -721,62 +698,6 @@ static int service_mdns(const char* hostname, const char* service_name, int serv
   return 0;
 }
 
-// Dump all incoming mDNS queries and answers
-static int dump_mdns(void) {
-  struct sockaddr_in service_address_ipv4 = {0};
-  struct sockaddr_in6 service_address_ipv6 = {0};
-
-  int sockets[32];
-  int num_sockets =
-      open_service_sockets(sockets, sizeof(sockets) / sizeof(sockets[0]), &service_address_ipv4, &service_address_ipv6);
-  if (num_sockets <= 0) {
-    printf("Failed to open any client sockets\n");
-    return -1;
-  }
-  printf("Opened %d socket%s for mDNS dump\n", num_sockets, num_sockets > 1 ? "s" : "");
-
-  size_t capacity = 2048;
-  void* buffer = malloc(capacity);
-
-  // This is a crude implementation that checks for incoming queries and answers
-  while (is_running) {
-    int nfds = 0;
-    fd_set readfs;
-    FD_ZERO(&readfs);
-    for (int i = 0; i < num_sockets; ++i) {
-      if (sockets[i] >= nfds) {
-        nfds = sockets[i] + 1;
-      }
-      FD_SET(sockets[i], &readfs);
-    }
-
-    struct timeval timeout;
-    timeout.tv_sec = 0;
-    timeout.tv_usec = 100000;
-
-    if (select(nfds, &readfs, 0, 0, &timeout) >= 0) {
-      for (int i = 0; i < num_sockets; ++i) {
-        if (FD_ISSET(sockets[i], &readfs)) {
-          mdns_socket_listen(sockets[i], buffer, capacity, dump_callback, 0);
-        }
-        FD_SET(sockets[i], &readfs);
-      }
-    } else {
-      break;
-    }
-  }
-
-  free(buffer);
-
-  // close sockets
-  for (int i = 0; i < num_sockets; ++i) {
-    mdns_socket_close(sockets[i]);
-  }
-  printf("Closed socket%s\n", num_sockets > 1 ? "s" : "");
-
-  return 0;
-}
-
 /** Signal handler to gracefully stop the service. */
 void signal_handler(int signal) {
   (void)signal;
@@ -893,7 +814,7 @@ int mdns_main(int argc, char* const* argv) {
       ret = service_mdns(hostname, service_name, service_port);
       break;
     case DUMP_MODE:
-      ret = dump_mdns();
+      ret = dump_mdns(&is_running);
       break;
     case DAEMON_MODE:
       printf("not yet\n");

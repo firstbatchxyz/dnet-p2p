@@ -53,12 +53,11 @@ mdns_string_t ip_address_to_string(char* buffer, size_t capacity, const struct s
 /** 
  * Parses the resource type and writes the record type name to given buffer.
  * 
- * @param buffer The buffer to write the string to
- * @param capacity The size of the buffer
+ * @param buffer The buffer to write the string to, of size `RECORDNAME_SIZE`
  * @param rtype The record type to convert
  * @return 0 on success, -1 if record type is invalid
  */
-int rtype_to_string(char* buffer, size_t capacity, uint16_t rtype) {
+int rtype_to_string(char buffer[RECORDNAME_SIZE], uint16_t rtype) {
   const char* name = NULL;
   if (rtype == MDNS_RECORDTYPE_PTR) {
     name = "PTR";
@@ -76,6 +75,6 @@ int rtype_to_string(char* buffer, size_t capacity, uint16_t rtype) {
     return -1;
   }
 
-  snprintf(buffer, capacity, "%s", name);
+  snprintf(buffer, RECORDNAME_SIZE, "%s", name);
   return 0;
 }

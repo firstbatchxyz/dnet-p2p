@@ -14,24 +14,7 @@
  * time after detecting leader failure before attempting to become the new
  * leader, helping to avoid election conflicts.
  */
-#include <arpa/inet.h>
-#include <errno.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <signal.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <time.h>
-#include <unistd.h>
-
-#include "mdns.h"
-#include "util.h"
-#include "sockets.h"
+#include "dllmd.h"
 
 /// `41891 = 4 18 9 1 = D R I A`
 #define DLLMD_PORT "41891"
@@ -84,9 +67,6 @@ static inline void signal_handler(int sig) {
   (void)sig;  // unused
   is_running = 0;
 }
-
-/// Get current time in seconds since epoch.
-static inline time_t get_current_time(void) { return time(NULL); }
 
 /** 
  * Compare two sockaddr structures to determine if they refer to the same address.
