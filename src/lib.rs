@@ -1,18 +1,11 @@
-mod query;
-pub use query::query_services;
+mod topo;
+pub use topo::get_topology;
 
-mod register;
-pub use register::register_service;
+mod p2p;
+pub use p2p::DLLMP2P;
 
 mod daemon;
 pub use daemon::run_daemon;
 
-#[cfg(test)]
-mod tests {
-    use gethostname::gethostname;
-
-    #[test]
-    fn test_register_service() {
-        println!("{}", gethostname().to_string_lossy());
-    }
-}
+mod signal;
+pub use signal::wait_for_termination;
