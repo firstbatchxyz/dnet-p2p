@@ -1,6 +1,10 @@
+use std::time::Duration;
+
 use clap::Subcommand;
 
 use clap::Parser;
+use dllmd::DLLMP2P;
+use libp2p::identity::Keypair;
 use tokio_util::sync::CancellationToken;
 
 #[derive(Subcommand)]
@@ -28,17 +32,26 @@ async fn main() {
         .init();
 
     let cancellation = CancellationToken::new();
+
+    // spawn a task to listen for termination signals
     let cancellation_clone = cancellation.clone();
     tokio::spawn(async move { dllmd::wait_for_termination(cancellation_clone).await });
 
     let args = Cli::parse();
     match args.command {
-        Commands::Topo => {
-            dllmd::get_topology(cancellation).await;
+        Commands::Daemon => {
+            DLLMP2P::new(Keypair::generate_ed25519())
+                .unwrap()
+                .run_daemon(cancellation, None)
+                .await;
         }
 
-        Commands::Daemon => {
-            dllmd::run_daemon(cancellation).await;
+        Commands::Topo => {
+            let keypair = Keypair::generate_ed25519(); // see TOPO
+            DLLMP2P::new(keypair)
+                .unwrap()
+                .run_topo(cancellation, Duration::from_secs(5))
+                .await;
         }
     }
 }

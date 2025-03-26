@@ -8,9 +8,7 @@ use std::{
     collections::hash_map,
     hash::{Hash, Hasher},
 };
-use tokio::time::Duration;
-
-use tokio::io;
+use tokio::{io, time::Duration};
 use tokio_util::sync::CancellationToken;
 
 #[derive(NetworkBehaviour)]
@@ -26,8 +24,8 @@ pub struct DLLMP2P {
 const DLLM_TOPIC: &str = "dllm";
 
 impl DLLMP2P {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let swarm = libp2p::SwarmBuilder::with_new_identity()
+    pub fn new(keypair: Keypair) -> Result<Self, Box<dyn std::error::Error>> {
+        let swarm = libp2p::SwarmBuilder::with_existing_identity(keypair)
             .with_tokio()
             .with_tcp(
                 tcp::Config::default(),
@@ -73,7 +71,10 @@ impl DLLMP2P {
     /// Waits for swarm events and Node commands at the same time.
     ///
     /// To terminate, the command channel must be closed.
-    pub async fn run(&mut self, cancellation: CancellationToken, addr: Option<Multiaddr>) {
+    ///
+    /// Can be inlined because its a main loop.
+    #[inline]
+    pub async fn run_daemon(&mut self, cancellation: CancellationToken, addr: Option<Multiaddr>) {
         self.subscribe(DLLM_TOPIC).unwrap();
         self.listen_on(addr);
 
@@ -89,12 +90,14 @@ impl DLLMP2P {
         }
     }
 
+    /// Shuts down the application.
+    #[inline]
     fn shutdown(&mut self) {
         log::info!("Terminating the application...");
         self.unsubscribe(DLLM_TOPIC);
     }
 
-    pub async fn get_topology(&mut self, cancellation: CancellationToken, duration: Duration) {
+    pub async fn run_topo(&mut self, cancellation: CancellationToken, duration: Duration) {
         self.subscribe(DLLM_TOPIC).unwrap();
         self.listen_on(None);
 
@@ -108,9 +111,7 @@ impl DLLMP2P {
                     self.shutdown();
                     return;
                 },
-                _ = ticker.tick() => {
-                    break;
-                }
+                _ = ticker.tick() => break,
             }
         }
 
@@ -120,6 +121,7 @@ impl DLLMP2P {
         }
     }
 
+    /// Handles the returned [`libp2p::swarm::SwarmEvent`].
     async fn handle_event(&mut self, event: SwarmEvent<DLLMBehaviourEvent>) {
         match event {
             SwarmEvent::Behaviour(DLLMBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
@@ -151,7 +153,9 @@ impl DLLMP2P {
             SwarmEvent::NewListenAddr { address, .. } => {
                 log::info!("Local node is listening on {address}");
             }
-            _ => {}
+            event => {
+                log::debug!("SwarmEvent: {event:?}")
+            }
         }
     }
 
@@ -205,6 +209,10 @@ fn create_mdns_behaviour(
     use mdns::tokio::Behaviour;
     use mdns::Config;
 
-    let mdns = Behaviour::new(Config::default(), keypair.public().to_peer_id())?;
+    let config = Config::default();
+    // NOTE: we can set a custom TTL here if we want to,
+    // but a low TTL causes nodes to be expired inadvertently!
+
+    let mdns = Behaviour::new(config, keypair.public().to_peer_id())?;
     Ok(mdns)
 }
