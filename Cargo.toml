@@ -2,6 +2,13 @@
 name = "dllmd"
 version = "0.0.1"
 edition = "2021"
+authors = ["erhant"]
+
+[lib]
+crate-type = [
+  "cdylib", # allows C/C++ to use this library
+  "rlib",   # allows main.rs to use this library
+]
 
 [dependencies]
 clap = { version = "4.5.32", features = ["derive"] }
