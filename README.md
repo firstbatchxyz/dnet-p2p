@@ -1,6 +1,12 @@
 # dLLM Daemon
 
-## Usage
+dLLM Daemon (dllmd) is a daemon service that connects peers within a local network together, allowing them to create a topology and share information about their latency costs, device properties and such; all so that a host can do sharding to share a model across devices.
+
+## Usage as library from C/C++
+
+TODO: !!!
+
+## Usage as CLI
 
 ```sh
 cargo run dllmd

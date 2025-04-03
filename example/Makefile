@@ -1,5 +1,8 @@
 CC = gcc
 CFLAGS = -I.
+
+# we load the shared library from the target/release directory
+# of the Rust project, which is where Cargo places the compiled library
 LDFLAGS = -L ../target/release -ldllmd
 
 SRC_DIR = src
@@ -9,7 +12,7 @@ SRCS = $(wildcard $(SRC_DIR)/*.c)
 OBJS = $(SRCS:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 TARGET = $(BUILD_DIR)/main
 
-.PHONY: all clean
+.PHONY: all clean again
 
 all: $(BUILD_DIR) $(TARGET)
 
@@ -24,3 +27,8 @@ $(TARGET): $(OBJS)
 
 clean:
 	rm -rf $(BUILD_DIR)
+
+again:
+	@echo "Rebuilding..."
+	$(MAKE) clean
+	$(MAKE) all
