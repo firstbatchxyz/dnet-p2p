@@ -1,4 +1,4 @@
-use debug_print::debug_println;
+use debug_print::debug_eprintln;
 use futures::StreamExt;
 use libp2p::{gossipsub, identity::Keypair, mdns, noise, tcp, yamux};
 use libp2p::{swarm::SwarmEvent, Multiaddr};
@@ -15,14 +15,17 @@ pub mod external;
 
 pub struct DllmP2p {
     swarm: libp2p::Swarm<DLLMBehaviour>,
-    running: bool,
+    cancellation: CancellationToken,
 }
 
 impl DllmP2p {
     /// The default topic to subscribe to.
     pub const DLLM_TOPIC: &'static str = "dllm";
 
-    pub fn new(keypair: Keypair) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(
+        keypair: Keypair,
+        cancellation: CancellationToken,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let swarm = libp2p::SwarmBuilder::with_existing_identity(keypair)
             .with_tokio()
             .with_tcp(
@@ -35,16 +38,23 @@ impl DllmP2p {
 
         Ok(Self {
             swarm,
-            running: false,
+            cancellation,
         })
+    }
+
+    /// Triggers cancellation.
+    #[inline]
+    fn stop(&mut self) {
+        if !self.cancellation.is_cancelled() {
+            self.cancellation.cancel();
+        }
     }
 
     /// Shuts down the application.
     #[inline]
     fn shutdown(&mut self) {
-        log::info!("Terminating the application...");
+        debug_eprintln!("Terminating the application...");
         self.unsubscribe(Self::DLLM_TOPIC);
-        self.running = false;
     }
 
     #[inline]
@@ -62,16 +72,14 @@ impl DllmP2p {
     ///
     /// Can be inlined because its a main loop.
     #[inline]
-    pub async fn run_daemon(&mut self, cancellation: CancellationToken, addr: Option<Multiaddr>) {
+    pub async fn run_daemon(&mut self, addr: Option<Multiaddr>) {
         self.subscribe(Self::DLLM_TOPIC).unwrap();
         self.listen_on(addr);
 
-        self.running = true;
-
-        debug_println!("Peer id: {}", self.swarm.local_peer_id());
+        debug_eprintln!("Peer id: {}", self.swarm.local_peer_id());
         loop {
             tokio::select! {
-                _ = cancellation.cancelled() => {
+                _ = self.cancellation.cancelled() => {
                     self.shutdown();
                     break;
                 },
@@ -80,11 +88,9 @@ impl DllmP2p {
         }
     }
 
-    pub async fn run_topo(&mut self, cancellation: CancellationToken, duration: Duration) {
+    pub async fn run_topo(&mut self, duration: Duration) {
         self.subscribe(Self::DLLM_TOPIC).expect("TODO: !!!");
         self.listen_on(None);
-
-        self.running = true;
 
         // collect events for the given duration
         let mut ticker = tokio::time::interval(duration);
@@ -92,7 +98,7 @@ impl DllmP2p {
         loop {
             tokio::select! {
                 event = self.swarm.select_next_some() => self.handle_event(event).await,
-                _ = cancellation.cancelled() => {
+                _ = self.cancellation.cancelled() => {
                     self.shutdown();
                     return;
                 },
@@ -111,7 +117,7 @@ impl DllmP2p {
         match event {
             SwarmEvent::Behaviour(DLLMBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
                 for (peer_id, _multiaddr) in list {
-                    debug_println!("mDNS discovered a new peer: {peer_id}");
+                    debug_eprintln!("mDNS discovered a new peer: {peer_id}");
                     self.swarm
                         .behaviour_mut()
                         .gossipsub
@@ -120,7 +126,7 @@ impl DllmP2p {
             }
             SwarmEvent::Behaviour(DLLMBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
                 for (peer_id, _multiaddr) in list {
-                    debug_println!("mDNS discover peer has expired: {peer_id}");
+                    debug_eprintln!("mDNS discover peer has expired: {peer_id}");
                     self.swarm
                         .behaviour_mut()
                         .gossipsub
@@ -132,23 +138,18 @@ impl DllmP2p {
                 message_id: id,
                 message,
             })) => {
-                debug_println!(
+                debug_eprintln!(
                     "Got message ({id}) from {peer_id}\n{}",
                     String::from_utf8_lossy(&message.data)
                 );
                 // TODO: !!!
             }
             SwarmEvent::NewListenAddr { address, .. } => {
-                debug_println!("Local node is listening on {address}");
+                debug_eprintln!("Local node is listening on {address}");
             }
             event => {
                 log::debug!("SwarmEvent: {event:?}")
             }
         }
-    }
-
-    #[inline]
-    pub fn is_running(&self) -> bool {
-        self.running
     }
 }

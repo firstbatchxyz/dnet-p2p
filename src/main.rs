@@ -37,17 +37,16 @@ async fn main() {
     let args = Cli::parse();
     match args.command {
         Commands::Daemon => {
-            DllmP2p::new(Keypair::generate_ed25519())
+            DllmP2p::new(Keypair::generate_ed25519(), cancellation)
                 .unwrap()
-                .run_daemon(cancellation, None)
+                .run_daemon(None)
                 .await;
         }
 
         Commands::Topo => {
-            let keypair = Keypair::generate_ed25519(); // see TOPO
-            DllmP2p::new(keypair)
+            DllmP2p::new(Keypair::generate_ed25519(), cancellation)
                 .unwrap()
-                .run_topo(cancellation, Duration::from_secs(5))
+                .run_topo(Duration::from_secs(5))
                 .await;
         }
     }

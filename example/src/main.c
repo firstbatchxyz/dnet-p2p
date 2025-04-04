@@ -13,11 +13,11 @@ int main() {
   }
 
   // start listening
-  dllmd_start_daemon(dllmd, "/ip4/0.0.0.0/tcp/0");
+  dllmd_handle_t *dllm_handle = dllmd_start(dllmd, "/ip4/0.0.0.0/tcp/0");
 
   printf("Waiting a bit\n");
   sleep(5);
-  dllmd_shutdown(dllmd);
+  dllmd_stop(dllmd, dllm_handle);
   dllmd_free(dllmd);
   printf("Bye!");
   return 0;

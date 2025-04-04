@@ -5,6 +5,7 @@
 //!
 //! ```c
 //! typedef struct dllmd dllmd_t;
+//! typedef struct dllmd_handle dllmd_handle_t;
 //! ```
 //!
 //! Each function in this module is prefixed with `dllmd_` to avoid name clashes.
@@ -12,8 +13,8 @@
 //!
 //! Inspired from: https://jakegoulding.com/rust-ffi-omnibus/objects/
 
-use debug_print::debug_println;
-use std::ffi::c_char;
+use debug_print::debug_eprintln;
+use std::{ffi::c_char, thread::JoinHandle};
 
 use super::DllmP2p;
 
@@ -26,8 +27,9 @@ use super::DllmP2p;
 #[no_mangle]
 pub extern "C" fn dllmd_new() -> *mut DllmP2p {
     let keypair = libp2p::identity::Keypair::generate_ed25519();
-    debug_println!("Creating DLLMP2P with keypair: {:?}", keypair.public());
-    let dllmp2p = DllmP2p::new(keypair).expect("could not create DLLMP2P");
+    debug_eprintln!("Creating DLLMP2P with keypair: {:?}", keypair.public());
+    let cancellation = tokio_util::sync::CancellationToken::new();
+    let dllmp2p = DllmP2p::new(keypair, cancellation).expect("could not create DLLMP2P");
     Box::into_raw(Box::new(dllmp2p))
 }
 
@@ -35,21 +37,25 @@ pub extern "C" fn dllmd_new() -> *mut DllmP2p {
 ///
 /// To be declared in C/C++ as:
 /// ```c
-/// extern void dllmd_shutdown(dllmd_t* ptr);
+/// extern void dllmd_stop(dllmd_t* ptr, dllmd_handle_t* handle_ptr);
 /// ```
 #[no_mangle]
-pub extern "C" fn dllmd_shutdown(ptr: *mut DllmP2p) {
+pub extern "C" fn dllmd_stop(dllm_ptr: *mut DllmP2p, handle_ptr: *mut JoinHandle<()>) {
     let dllm = unsafe {
-        assert!(!ptr.is_null());
-        &mut *ptr
+        assert!(!dllm_ptr.is_null());
+        &mut *dllm_ptr
     };
 
     tokio::runtime::Builder::new_current_thread()
         .build()
         .expect("could not create runtime")
         .block_on(async {
-            dllm.shutdown();
+            dllm.stop();
         });
+
+    // if stop() is called, we need to wait for the handle to finish
+    let handle = unsafe { Box::from_raw(handle_ptr) };
+    handle.join().expect("could not join handle");
 }
 
 /// Frees the memory allocated for the `DLLMP2P` instance.
@@ -59,18 +65,18 @@ pub extern "C" fn dllmd_shutdown(ptr: *mut DllmP2p) {
 /// extern void dllmd_free(dllmd_t* ptr);
 /// ```
 #[no_mangle]
-pub extern "C" fn dllmd_free(ptr: *mut DllmP2p) {
-    debug_println!("Freeing");
+pub extern "C" fn dllmd_free(dllm_ptr: *mut DllmP2p) {
+    debug_eprintln!("Freeing");
 
     // allow null pointer to be passed
-    if ptr.is_null() {
+    if dllm_ptr.is_null() {
         return;
     }
 
     // since the object was allocated by Rust, it must be freed by Rust as well;
     // so we use `Box::from_raw` to convert the raw pointer back into a `Box` and then drop it.
     unsafe {
-        drop(Box::from_raw(ptr));
+        drop(Box::from_raw(dllm_ptr));
     }
 }
 
@@ -78,10 +84,13 @@ pub extern "C" fn dllmd_free(ptr: *mut DllmP2p) {
 ///
 /// To be declared in C/C++ as:
 /// ```c
-/// extern void dllmd_start_daemon(dllmd_t* ptr, const char* addr);
+/// extern dllmd_handle_t* dllmd_start(dllmd_t* ptr, const char* addr);
 /// ```
 #[no_mangle]
-pub extern "C" fn dllmd_start_daemon(ptr: *mut DllmP2p, addr_ptr: *const c_char) {
+pub extern "C" fn dllmd_start(
+    dllm_ptr: *mut DllmP2p,
+    addr_ptr: *const c_char,
+) -> *mut JoinHandle<()> {
     let addr: Option<libp2p::Multiaddr> = if addr_ptr.is_null() {
         None
     } else {
@@ -95,8 +104,8 @@ pub extern "C" fn dllmd_start_daemon(ptr: *mut DllmP2p, addr_ptr: *const c_char)
     };
 
     let dllm = unsafe {
-        assert!(!ptr.is_null());
-        &mut *ptr
+        assert!(!dllm_ptr.is_null());
+        &mut *dllm_ptr
     };
 
     let rt = tokio::runtime::Builder::new_multi_thread()
@@ -104,26 +113,10 @@ pub extern "C" fn dllmd_start_daemon(ptr: *mut DllmP2p, addr_ptr: *const c_char)
         .build()
         .expect("could not create runtime");
 
-    // FIXME: handle is dropped here
-    std::thread::spawn(move || {
-        debug_println!("Starting the node!");
-        let cancel_token = tokio_util::sync::CancellationToken::new();
-        rt.block_on(dllm.run_daemon(cancel_token, addr));
+    let handle = std::thread::spawn(move || {
+        debug_eprintln!("Starting the node!");
+        rt.block_on(dllm.run_daemon(addr));
     });
-}
 
-/// Checks if the daemon is running.
-///
-/// To be declared in C/C++ as:
-/// ```c
-/// extern bool dllmd_is_running(dllmd_t* ptr);
-/// ```
-#[no_mangle]
-pub extern "C" fn dllmd_is_running(ptr: *mut DllmP2p) -> bool {
-    let dllm = unsafe {
-        assert!(!ptr.is_null());
-        &*ptr
-    };
-
-    dllm.is_running()
+    Box::into_raw(Box::new(handle))
 }
