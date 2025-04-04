@@ -70,12 +70,17 @@ pub extern "C" fn dllmd_stop(dllm_ptr: *mut DllmP2p, handle_ptr: *mut JoinHandle
 /// ```c
 /// extern void dllmd_free(dllmd_t* ptr);
 /// ```
+///
+/// Does no action if the pointer is `NULL`.
 #[no_mangle]
 pub extern "C" fn dllmd_free(dllm_ptr: *mut DllmP2p) {
+    if dllm_ptr.is_null() {
+        return;
+    }
+
     // since the object was allocated by Rust, it must be freed by Rust as well;
     // so we use `Box::from_raw` to convert the raw pointer back into a `Box` and then drop it.
     unsafe {
-        assert!(!dllm_ptr.is_null(), "dllm_ptr is null");
         drop(Box::from_raw(dllm_ptr));
     }
 }
@@ -121,4 +126,27 @@ pub extern "C" fn dllmd_start(
     });
 
     Box::into_raw(Box::new(handle))
+}
+
+/// Sends raw bytes to all peers in the network.
+///
+/// To be declared in C/C++ as:
+/// ```c
+/// extern int dllmd_publish(dllmd_t* ptr, const char* data, size_t data_len);
+/// ```
+///
+/// Returns non-zero on error.
+#[no_mangle]
+pub fn dllmd_publish(dllm_ptr: *mut DllmP2p, data_ptr: *const u8, data_len: usize) -> i32 {
+    let dllm = unsafe {
+        assert!(!dllm_ptr.is_null());
+        &mut *dllm_ptr
+    };
+
+    let data = unsafe { std::slice::from_raw_parts(data_ptr, data_len) };
+
+    match dllm.publish(DllmP2p::DLLM_TOPIC, data) {
+        Ok(_) => 0,
+        Err(_) => -1,
+    }
 }

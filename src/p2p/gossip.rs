@@ -1,4 +1,4 @@
-use libp2p::gossipsub::{IdentTopic, SubscriptionError};
+use libp2p::gossipsub::{IdentTopic, MessageId, PublishError, SubscriptionError};
 
 impl super::DllmP2p {
     /// Subscribes to the given topic.
@@ -24,5 +24,18 @@ impl super::DllmP2p {
             .behaviour_mut()
             .gossipsub
             .unsubscribe(&IdentTopic::new(topic))
+    }
+
+    pub(super) fn publish(
+        &mut self,
+        topic: impl Into<String>,
+        data: impl Into<Vec<u8>>,
+    ) -> Result<MessageId, PublishError> {
+        let topic = topic.into();
+        log::debug!("Publishing data to {}", topic);
+        self.swarm
+            .behaviour_mut()
+            .gossipsub
+            .publish(IdentTopic::new(topic), data)
     }
 }
