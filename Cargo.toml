@@ -28,3 +28,4 @@ libp2p = { version = "0.55.0", features = [
   "tcp",
   "yamux",
 ] }
+debug_print = "1.0.0"

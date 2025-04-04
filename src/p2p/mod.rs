@@ -1,3 +1,4 @@
+use debug_print::debug_println;
 use futures::StreamExt;
 use libp2p::{gossipsub, identity::Keypair, mdns, noise, tcp, yamux};
 use libp2p::{swarm::SwarmEvent, Multiaddr};
@@ -12,11 +13,12 @@ mod gossip;
 
 pub mod external;
 
-pub struct DLLMP2P {
+pub struct DllmP2p {
     swarm: libp2p::Swarm<DLLMBehaviour>,
+    running: bool,
 }
 
-impl DLLMP2P {
+impl DllmP2p {
     /// The default topic to subscribe to.
     pub const DLLM_TOPIC: &'static str = "dllm";
 
@@ -31,7 +33,10 @@ impl DLLMP2P {
             .with_behaviour(|key| Ok(DLLMBehaviour::new(key)))?
             .build();
 
-        Ok(Self { swarm })
+        Ok(Self {
+            swarm,
+            running: false,
+        })
     }
 
     /// Shuts down the application.
@@ -39,6 +44,7 @@ impl DLLMP2P {
     fn shutdown(&mut self) {
         log::info!("Terminating the application...");
         self.unsubscribe(Self::DLLM_TOPIC);
+        self.running = false;
     }
 
     #[inline]
@@ -60,7 +66,9 @@ impl DLLMP2P {
         self.subscribe(Self::DLLM_TOPIC).unwrap();
         self.listen_on(addr);
 
-        log::info!("Peer id: {}", self.swarm.local_peer_id());
+        self.running = true;
+
+        debug_println!("Peer id: {}", self.swarm.local_peer_id());
         loop {
             tokio::select! {
                 _ = cancellation.cancelled() => {
@@ -75,6 +83,8 @@ impl DLLMP2P {
     pub async fn run_topo(&mut self, cancellation: CancellationToken, duration: Duration) {
         self.subscribe(Self::DLLM_TOPIC).expect("TODO: !!!");
         self.listen_on(None);
+
+        self.running = true;
 
         // collect events for the given duration
         let mut ticker = tokio::time::interval(duration);
@@ -101,7 +111,7 @@ impl DLLMP2P {
         match event {
             SwarmEvent::Behaviour(DLLMBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
                 for (peer_id, _multiaddr) in list {
-                    log::info!("mDNS discovered a new peer: {peer_id}");
+                    debug_println!("mDNS discovered a new peer: {peer_id}");
                     self.swarm
                         .behaviour_mut()
                         .gossipsub
@@ -110,7 +120,7 @@ impl DLLMP2P {
             }
             SwarmEvent::Behaviour(DLLMBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
                 for (peer_id, _multiaddr) in list {
-                    log::info!("mDNS discover peer has expired: {peer_id}");
+                    debug_println!("mDNS discover peer has expired: {peer_id}");
                     self.swarm
                         .behaviour_mut()
                         .gossipsub
@@ -122,18 +132,23 @@ impl DLLMP2P {
                 message_id: id,
                 message,
             })) => {
-                log::info!(
+                debug_println!(
                     "Got message ({id}) from {peer_id}\n{}",
                     String::from_utf8_lossy(&message.data)
                 );
                 // TODO: !!!
             }
             SwarmEvent::NewListenAddr { address, .. } => {
-                log::info!("Local node is listening on {address}");
+                debug_println!("Local node is listening on {address}");
             }
             event => {
                 log::debug!("SwarmEvent: {event:?}")
             }
         }
+    }
+
+    #[inline]
+    pub fn is_running(&self) -> bool {
+        self.running
     }
 }

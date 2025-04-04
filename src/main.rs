@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use dllmd::DLLMP2P;
+use dllmd::DllmP2p;
 use libp2p::identity::Keypair;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
@@ -37,7 +37,7 @@ async fn main() {
     let args = Cli::parse();
     match args.command {
         Commands::Daemon => {
-            DLLMP2P::new(Keypair::generate_ed25519())
+            DllmP2p::new(Keypair::generate_ed25519())
                 .unwrap()
                 .run_daemon(cancellation, None)
                 .await;
@@ -45,7 +45,7 @@ async fn main() {
 
         Commands::Topo => {
             let keypair = Keypair::generate_ed25519(); // see TOPO
-            DLLMP2P::new(keypair)
+            DllmP2p::new(keypair)
                 .unwrap()
                 .run_topo(cancellation, Duration::from_secs(5))
                 .await;

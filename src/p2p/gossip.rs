@@ -1,6 +1,6 @@
 use libp2p::gossipsub::{IdentTopic, SubscriptionError};
 
-impl super::DLLMP2P {
+impl super::DllmP2p {
     /// Subscribes to the given topic.
     #[inline]
     pub(super) fn subscribe(

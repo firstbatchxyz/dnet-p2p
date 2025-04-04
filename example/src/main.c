@@ -1,12 +1,24 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
-extern char *echo(const char *input);
+#include "dllmd.h"
+#include "echo.h"
 
 int main() {
-  char *result = echo("Hello from C!");
-  printf("%s\n", result);
+  dllmd_t *dllmd = dllmd_new();
+  if (!dllmd) {
+    fprintf(stderr, "Failed to create dllmd instance\n");
+    return 1;
+  }
 
-  free(result);
+  // start listening
+  dllmd_start_daemon(dllmd, "/ip4/0.0.0.0/tcp/0");
+
+  printf("Waiting a bit\n");
+  sleep(5);
+  dllmd_shutdown(dllmd);
+  dllmd_free(dllmd);
+  printf("Bye!");
   return 0;
 }

@@ -26,6 +26,8 @@ pub extern "C" fn echo_upper(input: *const c_char) -> CString {
 /// ```c
 /// extern void echo_upper_mut(const char* input, char* output);
 /// ```
+///
+/// The `output` can be created like `char output[BUFFER_SIZE];`.
 #[no_mangle]
 #[allow(improper_ctypes_definitions)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
