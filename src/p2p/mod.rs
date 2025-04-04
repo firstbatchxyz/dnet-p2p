@@ -53,7 +53,7 @@ impl DllmP2p {
     /// Shuts down the application.
     #[inline]
     fn shutdown(&mut self) {
-        debug_eprintln!("Terminating the application...");
+        debug_eprintln!("Shutting down DLLMP2P");
         self.unsubscribe(Self::DLLM_TOPIC);
     }
 

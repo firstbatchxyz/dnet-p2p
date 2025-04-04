@@ -35,6 +35,9 @@ pub extern "C" fn dllmd_new() -> *mut DllmP2p {
 
 /// Gracefully shutsdown the daemon.
 ///
+/// This first calls `stop()` on the `DLLMP2P` instance, and then waits for the handle to finish.
+/// It is expected to finish due to the internal cancellation token.
+///
 /// To be declared in C/C++ as:
 /// ```c
 /// extern void dllmd_stop(dllmd_t* ptr, dllmd_handle_t* handle_ptr);
@@ -42,7 +45,7 @@ pub extern "C" fn dllmd_new() -> *mut DllmP2p {
 #[no_mangle]
 pub extern "C" fn dllmd_stop(dllm_ptr: *mut DllmP2p, handle_ptr: *mut JoinHandle<()>) {
     let dllm = unsafe {
-        assert!(!dllm_ptr.is_null());
+        assert!(!dllm_ptr.is_null(), "dllm_ptr is null");
         &mut *dllm_ptr
     };
 
@@ -54,7 +57,10 @@ pub extern "C" fn dllmd_stop(dllm_ptr: *mut DllmP2p, handle_ptr: *mut JoinHandle
         });
 
     // if stop() is called, we need to wait for the handle to finish
-    let handle = unsafe { Box::from_raw(handle_ptr) };
+    let handle = unsafe {
+        assert!(!handle_ptr.is_null(), "handle_ptr is null");
+        Box::from_raw(handle_ptr)
+    };
     handle.join().expect("could not join handle");
 }
 
@@ -66,16 +72,10 @@ pub extern "C" fn dllmd_stop(dllm_ptr: *mut DllmP2p, handle_ptr: *mut JoinHandle
 /// ```
 #[no_mangle]
 pub extern "C" fn dllmd_free(dllm_ptr: *mut DllmP2p) {
-    debug_eprintln!("Freeing");
-
-    // allow null pointer to be passed
-    if dllm_ptr.is_null() {
-        return;
-    }
-
     // since the object was allocated by Rust, it must be freed by Rust as well;
     // so we use `Box::from_raw` to convert the raw pointer back into a `Box` and then drop it.
     unsafe {
+        assert!(!dllm_ptr.is_null(), "dllm_ptr is null");
         drop(Box::from_raw(dllm_ptr));
     }
 }
@@ -86,6 +86,8 @@ pub extern "C" fn dllmd_free(dllm_ptr: *mut DllmP2p) {
 /// ```c
 /// extern dllmd_handle_t* dllmd_start(dllmd_t* ptr, const char* addr);
 /// ```
+///
+/// The returned handle should be passed to [`dllmd_stop()`] to stop the daemon gracefully.
 #[no_mangle]
 pub extern "C" fn dllmd_start(
     dllm_ptr: *mut DllmP2p,
