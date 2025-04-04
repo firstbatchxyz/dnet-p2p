@@ -26,6 +26,7 @@ impl super::DllmP2p {
             .unsubscribe(&IdentTopic::new(topic))
     }
 
+    /// Publishes data to the given topic.
     pub(super) fn publish(
         &mut self,
         topic: impl Into<String>,

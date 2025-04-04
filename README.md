@@ -4,9 +4,20 @@ dLLM Daemon (dllmd) is a daemon service that connects peers within a local netwo
 
 ## Usage as library from C/C++
 
-TODO: !!!
+Include the shared library within your loader step, e.g. `-L some/directory -ldllmd`. Then, include [`dllmd.h`](./example/src/dllmd.h) in your code.
+
+- You can create a new service object with `dllmd_new` which returns you an object pointer, and free it later with `dllmd_free`.
+
+- You can start the service with `dllmd_start` which returns you a thread handle pointer, and then stop it with `dllmd_stop`.
+
+See the header file for more specific instructions.
+
+> [!TIP]
+> Debug builds of the library include diagnostic prints to `stderr`, otherwise nothing is printed.
 
 ## Usage as CLI
+
+Simple run the daemon with:
 
 ```sh
 cargo run dllmd
@@ -14,7 +25,7 @@ cargo run dllmd
 
 TODO: !!!
 
-## Usage with dns-sd
+## Usage with [dns-sd](https://man.netbsd.org/dns-sd.1)
 
 When the daemon is running, we can detect it with the [dns-sd](https://manp.gs/mac/1/dns-sd) standard tool:
 

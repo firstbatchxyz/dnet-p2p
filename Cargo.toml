@@ -7,7 +7,7 @@ authors = ["erhant"]
 [lib]
 crate-type = [
   "cdylib", # allows C/C++ to use this library
-  "rlib",   # allows main.rs to use this library
+  "rlib",   # allows Rust to use this library
 ]
 
 [dependencies]
