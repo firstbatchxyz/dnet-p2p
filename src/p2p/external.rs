@@ -172,6 +172,7 @@ pub fn dllmd_receive(
     };
 
     tokio::runtime::Builder::new_current_thread()
+        .enable_all()
         .build()
         .expect("could not create runtime")
         .block_on(async {
@@ -186,7 +187,11 @@ pub fn dllmd_receive(
                     let data = message.data;
                     let data_len: usize = data.len();
 
-                    if buf_size < data_len {
+                    if data_len == 0 {
+                        // if the message is empty, we cannot copy the data
+                        // but the message is consumed
+                        return 0;
+                    } else if buf_size < data_len {
                         // if the buffer is too small, we cannot copy the data
                         // but the message is consumed
                         // FIXME: can use `dllm.message_rx.iter().peekable();` to avoid this
@@ -203,7 +208,7 @@ pub fn dllmd_receive(
                     return -2;
                 }
                 Err(_) => {
-                    return -1;
+                    return 0;
                 }
             }
         })

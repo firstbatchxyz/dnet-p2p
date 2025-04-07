@@ -41,13 +41,14 @@ async fn main() {
         .await;
     // }
     // };
+
     if let Err(e) = handle.await {
         log::error!("Error while waiting for termination: {}", e);
     } else {
         log::info!("Termination signal received");
     }
 
-    debug_eprintln!("Bye!");
+    debug_eprintln!("Bye!\n");
 }
 
 /// Waits for various termination signals, and cancels the given token when the signal is received.

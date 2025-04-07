@@ -1,9 +1,9 @@
 use debug_print::debug_eprintln;
 use futures::StreamExt;
+use libp2p::core::transport::ListenerId;
 use libp2p::{gossipsub, identity::Keypair, mdns, noise, tcp, yamux};
 use libp2p::{swarm::SwarmEvent, Multiaddr};
 use tokio::sync::mpsc;
-use tokio::{io, io::AsyncBufReadExt};
 use tokio_util::sync::CancellationToken;
 
 mod behaviour;
@@ -18,6 +18,7 @@ pub struct DllmP2p {
     cancellation: CancellationToken,
     message_tx: mpsc::UnboundedSender<gossipsub::Message>,
     message_rx: mpsc::UnboundedReceiver<gossipsub::Message>,
+    listener_id: Option<ListenerId>,
 }
 
 impl DllmP2p {
@@ -45,6 +46,7 @@ impl DllmP2p {
             cancellation,
             message_tx: tx,
             message_rx: rx,
+            listener_id: None,
         })
     }
 
@@ -65,6 +67,8 @@ impl DllmP2p {
         self.message_rx.close();
         while !self.message_rx.recv().await.is_none() { /* consume the channel */ }
         debug_eprintln!("Done");
+
+        self.swarm.remove_listener(self.listener_id.unwrap());
     }
 
     #[inline]
@@ -72,7 +76,7 @@ impl DllmP2p {
         const DEFAULT_ADDR: &str = "/ip4/0.0.0.0/tcp/0";
         let addr = addr.unwrap_or_else(|| DEFAULT_ADDR.parse().unwrap());
 
-        self.swarm.listen_on(addr).expect("TODO: listen_on");
+        self.listener_id = Some(self.swarm.listen_on(addr).expect("TODO: listen_on"));
     }
 
     /// Waits for swarm events and Node commands at the same time.
@@ -85,9 +89,6 @@ impl DllmP2p {
         self.subscribe(Self::DLLM_TOPIC).unwrap();
         self.listen_on(addr);
 
-        // read lines
-        let mut stdin = io::BufReader::new(io::stdin()).lines();
-
         debug_eprintln!("Peer ID: {}", self.swarm.local_peer_id());
         loop {
             tokio::select! {
@@ -95,11 +96,6 @@ impl DllmP2p {
                     self.shutdown().await;
                     return;
                 },
-                Ok(Some(line)) = stdin.next_line() => {
-                    if let Err(e) = self.publish(Self::DLLM_TOPIC, line.as_bytes()) {
-                        debug_eprintln!("Publish error: {e:?}");
-                    }
-                }
                 event = self.swarm.select_next_some() => self.handle_event(event).await,
             }
         }

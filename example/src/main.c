@@ -24,6 +24,7 @@ int main() {
   dllmd_handle_t *dllm_handle = dllmd_start(dllmd, "/ip4/0.0.0.0/tcp/0");
   char buf[256];
   while (is_running) {
+    printf("polling for messages...\n");
     int timeout_ms = 400;
     int bytes = dllmd_receive(dllmd, buf, sizeof(buf), timeout_ms);
     if (bytes < 0) {
