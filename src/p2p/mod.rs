@@ -2,8 +2,8 @@ use debug_print::debug_eprintln;
 use futures::StreamExt;
 use libp2p::{gossipsub, identity::Keypair, mdns, noise, tcp, yamux};
 use libp2p::{swarm::SwarmEvent, Multiaddr};
-
-use tokio::time::Duration;
+use tokio::sync::mpsc;
+use tokio::{io, io::AsyncBufReadExt};
 use tokio_util::sync::CancellationToken;
 
 mod behaviour;
@@ -16,6 +16,8 @@ pub mod external;
 pub struct DllmP2p {
     swarm: libp2p::Swarm<DLLMBehaviour>,
     cancellation: CancellationToken,
+    message_tx: mpsc::UnboundedSender<gossipsub::Message>,
+    message_rx: mpsc::UnboundedReceiver<gossipsub::Message>,
 }
 
 impl DllmP2p {
@@ -36,9 +38,13 @@ impl DllmP2p {
             .with_behaviour(|key| Ok(DLLMBehaviour::new(key)))?
             .build();
 
+        let (tx, rx) = mpsc::unbounded_channel::<gossipsub::Message>();
+
         Ok(Self {
             swarm,
             cancellation,
+            message_tx: tx,
+            message_rx: rx,
         })
     }
 
@@ -52,18 +58,21 @@ impl DllmP2p {
 
     /// Shuts down the application.
     #[inline]
-    fn shutdown(&mut self) {
+    async fn shutdown(&mut self) {
         debug_eprintln!("Shutting down DLLMP2P");
         self.unsubscribe(Self::DLLM_TOPIC);
+        debug_eprintln!("Shutting down channel");
+        self.message_rx.close();
+        while !self.message_rx.recv().await.is_none() { /* consume the channel */ }
+        debug_eprintln!("Done");
     }
 
     #[inline]
     pub fn listen_on(&mut self, addr: Option<Multiaddr>) {
         const DEFAULT_ADDR: &str = "/ip4/0.0.0.0/tcp/0";
+        let addr = addr.unwrap_or_else(|| DEFAULT_ADDR.parse().unwrap());
 
-        self.swarm
-            .listen_on(addr.unwrap_or_else(|| DEFAULT_ADDR.parse().unwrap()))
-            .expect("TODO: listen_on");
+        self.swarm.listen_on(addr).expect("TODO: listen_on");
     }
 
     /// Waits for swarm events and Node commands at the same time.
@@ -76,39 +85,23 @@ impl DllmP2p {
         self.subscribe(Self::DLLM_TOPIC).unwrap();
         self.listen_on(addr);
 
-        debug_eprintln!("Peer id: {}", self.swarm.local_peer_id());
+        // read lines
+        let mut stdin = io::BufReader::new(io::stdin()).lines();
+
+        debug_eprintln!("Peer ID: {}", self.swarm.local_peer_id());
         loop {
             tokio::select! {
                 _ = self.cancellation.cancelled() => {
-                    self.shutdown();
-                    break;
-                },
-                event = self.swarm.select_next_some() => self.handle_event(event).await,
-            }
-        }
-    }
-
-    pub async fn run_topo(&mut self, duration: Duration) {
-        self.subscribe(Self::DLLM_TOPIC).expect("TODO: !!!");
-        self.listen_on(None);
-
-        // collect events for the given duration
-        let mut ticker = tokio::time::interval(duration);
-        ticker.tick().await;
-        loop {
-            tokio::select! {
-                event = self.swarm.select_next_some() => self.handle_event(event).await,
-                _ = self.cancellation.cancelled() => {
-                    self.shutdown();
+                    self.shutdown().await;
                     return;
                 },
-                _ = ticker.tick() => break,
+                Ok(Some(line)) = stdin.next_line() => {
+                    if let Err(e) = self.publish(Self::DLLM_TOPIC, line.as_bytes()) {
+                        debug_eprintln!("Publish error: {e:?}");
+                    }
+                }
+                event = self.swarm.select_next_some() => self.handle_event(event).await,
             }
-        }
-
-        // print discovered nodes
-        for peer in self.swarm.behaviour().mdns.discovered_nodes() {
-            log::info!("{:?}", peer);
         }
     }
 
@@ -142,7 +135,9 @@ impl DllmP2p {
                     "Got message ({id}) from {peer_id}\n{}",
                     String::from_utf8_lossy(&message.data)
                 );
-                // TODO: !!!
+                if let Err(e) = self.message_tx.send(message) {
+                    debug_eprintln!("Failed to send message: {e}");
+                }
             }
             SwarmEvent::NewListenAddr { address, .. } => {
                 debug_eprintln!("Local node is listening on {address}");

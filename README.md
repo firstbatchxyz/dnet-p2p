@@ -27,21 +27,24 @@ TODO: !!!
 
 ## Usage with [dns-sd](https://man.netbsd.org/dns-sd.1)
 
-When the daemon is running, we can detect it with the [dns-sd](https://manp.gs/mac/1/dns-sd) standard tool:
+When the daemon is running, we can detect the libp2p MDNS service with the [dns-sd](https://manp.gs/mac/1/dns-sd) standard tool (following the definitions in [libp2p-mdns specification](https://github.com/libp2p/specs/blob/master/discovery/mdns.md)).
+
+First, we can make a DNS-SD meta-query to see that indeed `_p2p._udp` is registered (can be piped to `grep p2p`):
 
 ```sh
-$ dns-sd -B _dllmd
-A/R    Flags  if Domain               Service Type         Instance Name
-Add        3  11 local.               _dllmd._tcp.         foobar
+$ dns-sd -Q _services._dns-sd._udp.local PTR
+# ...
+A/R  Flags         IF  Name                          Type   Class  Rdata
+Add  2             12  _services._dns-sd._udp.local. PTR    IN     _p2p._udp.local.
 # ...
 ```
 
-We can query PTRs of the service at the dLLM mDNS domain with:
+Then, we can query PTRs of the service at the dLLM mDNS domain with:
 
 ```sh
-$ dns-sd -Q _dllmd._tcp.local. PTR
-A/R  Flags         IF  Name                          Type   Class  Rdata
-Add  40000003      11  _dllmd._tcp.local.            PTR    IN     foobar._dllmd._tcp.local.
+$ dns-sd -Q _p2p._udp.local. PTR
+A/R  Flags         IF  Name                      Type   Class  Rdata
+Add  40000003      11  _p2p._udp.local           PTR    IN     <some-text>.
 # ...
 ```
 
@@ -49,7 +52,7 @@ The `Rdata` returned by a PTR record points to another service, accessed by the 
 
 ```sh
 # service records
-$ dns-sd -Q foobar._dllmd._tcp.local. SRV
+$ dns-sd -Q gZSkS6ITRpeQHyO0b99O0qV8imlYkJgdZCf. SRV
 A/R  Flags         IF  Name                          Type   Class  Rdata
 Add  40000003       1  foobar._dllmd._tcp.local.     SRV    IN     0 0 3456 erhant-work.local.
 

@@ -14,7 +14,7 @@
 //! Inspired from: https://jakegoulding.com/rust-ffi-omnibus/objects/
 
 use debug_print::debug_eprintln;
-use std::{ffi::c_char, thread::JoinHandle};
+use std::{ffi::c_char, thread::JoinHandle, time::Duration};
 
 use super::DllmP2p;
 
@@ -48,6 +48,11 @@ pub extern "C" fn dllmd_stop(dllm_ptr: *mut DllmP2p, handle_ptr: *mut JoinHandle
         assert!(!dllm_ptr.is_null(), "dllm_ptr is null");
         &mut *dllm_ptr
     };
+    // if stop() is called, we need to wait for the handle to finish
+    let handle = unsafe {
+        assert!(!handle_ptr.is_null(), "handle_ptr is null");
+        Box::from_raw(handle_ptr)
+    };
 
     tokio::runtime::Builder::new_current_thread()
         .build()
@@ -56,11 +61,6 @@ pub extern "C" fn dllmd_stop(dllm_ptr: *mut DllmP2p, handle_ptr: *mut JoinHandle
             dllm.stop();
         });
 
-    // if stop() is called, we need to wait for the handle to finish
-    let handle = unsafe {
-        assert!(!handle_ptr.is_null(), "handle_ptr is null");
-        Box::from_raw(handle_ptr)
-    };
     handle.join().expect("could not join handle");
 }
 
@@ -149,4 +149,64 @@ pub fn dllmd_publish(dllm_ptr: *mut DllmP2p, data_ptr: *const u8, data_len: usiz
         Ok(_) => 0,
         Err(_) => -1,
     }
+}
+
+/// Waits for a message to be received from the network.
+///
+/// To be declared in C/C++ as:
+/// ```c
+/// extern int dllmd_receive(dllmd_t *ptr, void *buf, size_t buf_size, uint64_t timeout_ms);
+/// ```
+///
+/// Returns the number of bytes received on success; othewrwise, returns -1.
+#[no_mangle]
+pub fn dllmd_receive(
+    dllm_ptr: *mut DllmP2p,
+    buf: *const u8,
+    buf_size: usize,
+    timeout_ms: u64,
+) -> i32 {
+    let dllm = unsafe {
+        assert!(!dllm_ptr.is_null());
+        &mut *dllm_ptr
+    };
+
+    tokio::runtime::Builder::new_current_thread()
+        .build()
+        .expect("could not create runtime")
+        .block_on(async {
+            use tokio::time::timeout;
+
+            match if timeout_ms != 0 {
+                timeout(Duration::from_millis(timeout_ms), dllm.message_rx.recv()).await
+            } else {
+                Ok(dllm.message_rx.recv().await)
+            } {
+                Ok(Some(message)) => {
+                    let data = message.data;
+                    let data_len: usize = data.len();
+
+                    if buf_size < data_len {
+                        // if the buffer is too small, we cannot copy the data
+                        // but the message is consumed
+                        // FIXME: can use `dllm.message_rx.iter().peekable();` to avoid this
+                        -3
+                    } else {
+                        unsafe {
+                            std::ptr::copy_nonoverlapping(data.as_ptr(), buf as *mut u8, data_len);
+                        }
+                        data_len as i32
+                    }
+                }
+                Ok(None) => {
+                    debug_eprintln!("Receive channel closed");
+                    return -2;
+                }
+                Err(_) => {
+                    return -1;
+                }
+            }
+        })
+
+    // blocks until a message is received
 }

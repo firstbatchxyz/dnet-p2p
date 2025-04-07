@@ -1,13 +1,11 @@
 use clap::{Parser, Subcommand};
+use debug_print::debug_eprintln;
 use dllmd::DllmP2p;
 use libp2p::identity::Keypair;
-use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Check existing topology.
-    Topo,
     /// Run the dLLM daemon.
     Daemon,
 }
@@ -32,24 +30,24 @@ async fn main() {
 
     // spawn a task to listen for termination signals
     let cancellation_clone = cancellation.clone();
-    tokio::spawn(async move { wait_for_termination(cancellation_clone).await });
+    let handle = tokio::spawn(async move { wait_for_termination(cancellation_clone).await });
 
-    let args = Cli::parse();
-    match args.command {
-        Commands::Daemon => {
-            DllmP2p::new(Keypair::generate_ed25519(), cancellation)
-                .unwrap()
-                .run_daemon(None)
-                .await;
-        }
-
-        Commands::Topo => {
-            DllmP2p::new(Keypair::generate_ed25519(), cancellation)
-                .unwrap()
-                .run_topo(Duration::from_secs(5))
-                .await;
-        }
+    // let args = Cli::parse();
+    // match args.command {
+    //     Commands::Daemon => {
+    DllmP2p::new(Keypair::generate_ed25519(), cancellation)
+        .unwrap()
+        .run_daemon(None)
+        .await;
+    // }
+    // };
+    if let Err(e) = handle.await {
+        log::error!("Error while waiting for termination: {}", e);
+    } else {
+        log::info!("Termination signal received");
     }
+
+    debug_eprintln!("Bye!");
 }
 
 /// Waits for various termination signals, and cancels the given token when the signal is received.

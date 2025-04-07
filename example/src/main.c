@@ -1,6 +1,5 @@
 #include <signal.h>
 #include <stdio.h>
-#include <string.h>
 #include <unistd.h>
 
 #include "dllmd.h"
@@ -23,20 +22,29 @@ int main() {
 
   // start listening
   dllmd_handle_t *dllm_handle = dllmd_start(dllmd, "/ip4/0.0.0.0/tcp/0");
+  char buf[256];
   while (is_running) {
-    // TODO: what should be done here?
-    sleep(1);
+    int timeout_ms = 400;
+    int bytes = dllmd_receive(dllmd, buf, sizeof(buf), timeout_ms);
+    if (bytes < 0) {
+      fprintf(stderr, "Failed to receive message\n");
+      break;
+    } else if (bytes == 0) {
+      // no message received
+      printf("No message received\n");
+      continue;
+    } else {
+      printf("Received %d bytes:\n", bytes);
+      fwrite(buf, 1, bytes, stdout);
+      printf("\n");
+    }
   }
-
-  // publish a message as you are closing
-  const char *data = "Bye bye, world!";
-  dllmd_publish(dllmd, data, strlen(data));
-  sleep(1);
 
   // cleanups
   dllmd_stop(dllmd, dllm_handle);
   dllmd_free(dllmd);
 
+  // reset signal handler to default
   signal(SIGINT, SIG_DFL);
   printf("Bye!");
   return 0;

@@ -6,6 +6,7 @@ use std::{
 };
 use tokio::{io, time::Duration};
 
+/// DLLM Behaviour, uses GossipSub and mDNS protocols.
 #[derive(NetworkBehaviour)]
 pub(crate) struct DLLMBehaviour {
     pub(crate) gossipsub: gossipsub::Behaviour,
@@ -38,10 +39,13 @@ fn create_gossipsub_behaviour(
 
     /// Time between each GossipSub heartbeat.
     const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
+    /// The maximum byte size for each gossip.
+    const MAX_TRANSMIT_SIZE: usize = 1024 * 1024; // 1 MB
 
     // permissive mode with author peer ids only, good for constrained devices to avoid signatures
     let gossipsub_config = ConfigBuilder::default()
         .heartbeat_interval(HEARTBEAT_INTERVAL)
+        .max_transmit_size(MAX_TRANSMIT_SIZE)
         .validation_mode(ValidationMode::Permissive)
         .message_id_fn(message_id_fn)
         .build()
