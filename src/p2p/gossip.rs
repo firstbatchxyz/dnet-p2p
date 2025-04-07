@@ -1,4 +1,5 @@
-use libp2p::gossipsub::{IdentTopic, MessageId, PublishError, SubscriptionError};
+use debug_print::debug_eprintln;
+use libp2p::gossipsub::{Event, IdentTopic, MessageId, PublishError, SubscriptionError};
 
 impl super::DllmP2p {
     /// Subscribes to the given topic.
@@ -38,5 +39,26 @@ impl super::DllmP2p {
             .behaviour_mut()
             .gossipsub
             .publish(IdentTopic::new(topic), data)
+    }
+
+    #[inline]
+    pub fn handle_gossipsub_event(&mut self, event: Event) {
+        match event {
+            Event::Message {
+                propagation_source,
+                message,
+                ..
+            } => {
+                log::debug!("Received message: {:?}", message);
+                debug_eprintln!(
+                    "Got message ({} bytes) from {propagation_source}",
+                    message.data.len()
+                );
+                if let Err(e) = self.message_tx.send(message) {
+                    debug_eprintln!("Failed to send message: {e}");
+                }
+            }
+            _ => {}
+        }
     }
 }

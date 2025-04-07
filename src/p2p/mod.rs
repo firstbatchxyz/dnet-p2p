@@ -122,24 +122,14 @@ impl DllmP2p {
                         .remove_explicit_peer(&peer_id);
                 }
             }
-            SwarmEvent::Behaviour(DLLMBehaviourEvent::Gossipsub(gossipsub::Event::Message {
-                propagation_source: peer_id,
-                message_id: id,
-                message,
-            })) => {
-                debug_eprintln!(
-                    "Got message ({id}) from {peer_id}\n{}",
-                    String::from_utf8_lossy(&message.data)
-                );
-                if let Err(e) = self.message_tx.send(message) {
-                    debug_eprintln!("Failed to send message: {e}");
-                }
+            SwarmEvent::Behaviour(DLLMBehaviourEvent::Gossipsub(event)) => {
+                self.handle_gossipsub_event(event);
             }
             SwarmEvent::NewListenAddr { address, .. } => {
                 debug_eprintln!("Local node is listening on {address}");
             }
             event => {
-                log::debug!("SwarmEvent: {event:?}")
+                log::debug!("Unhandled event: {event:?}");
             }
         }
     }
