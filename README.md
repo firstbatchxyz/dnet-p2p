@@ -1,19 +1,19 @@
-# dLLM Daemon
+# dnet p2p
 
-dLLM Daemon (dllmd) is a daemon service that connects peers within a local network together, allowing them to create a topology and share information about their latency costs, device properties and such; all so that a host can do sharding to share a model across devices.
+dnet p2p is a shared library that add mDNS peer-to-peer connectibility.
 
 ## Usage as library from C/C++
 
-Include the shared library within your loader step, e.g. `-L some/directory -ldllmd`. Then, include [`dllmd.h`](./example/src/dllmd.h) in your code.
+Include the shared library within your loader step, e.g. `-L some/directory -ldnet`. Then, include [`dnet.h`](./example/src/dnet.h) in your code.
 
-- You can create a new service object with `dllmd_new` which returns you an object pointer, and free it later with `dllmd_free`.
+- You can create a new service object with `dnet_new` which returns you an object pointer, and free it later with `dnet_free`.
+- You can start the service with `dnet_start` which returns you a thread handle pointer, and then stop it with `dnet_stop`.
+- You can publish a data to all peers with `dnet_publish`, or receive a data for your peer with `dnet_receive`.
 
-- You can start the service with `dllmd_start` which returns you a thread handle pointer, and then stop it with `dllmd_stop`.
-
-See the header file for more specific instructions.
+See the [header file](./example/src/dnet.h) for more specific instructions.
 
 > [!TIP]
-> Debug builds of the library include diagnostic prints to `stderr`, otherwise nothing is printed.
+> Debug build of the library include diagnostic prints to `stderr`; in release build _nothing_ is printed.
 
 ## Usage as CLI
 
@@ -48,18 +48,18 @@ Add  40000003      11  _p2p._udp.local           PTR    IN     <some-text>.
 # ...
 ```
 
-The `Rdata` returned by a PTR record points to another service, accessed by the returned domain (which are subdomains of `_dllmd`). We can query any of them to get their details, such as service (SRV) details or additional records within TXT records.
+The `Rdata` returned by a PTR record points to another service, accessed by the returned domain (which are subdomains of `_dnet`). We can query any of them to get their details, such as service (SRV) details or additional records within TXT records.
 
 ```sh
 # service records
 $ dns-sd -Q gZSkS6ITRpeQHyO0b99O0qV8imlYkJgdZCf. SRV
 A/R  Flags         IF  Name                          Type   Class  Rdata
-Add  40000003       1  foobar._dllmd._tcp.local.     SRV    IN     0 0 3456 erhant-work.local.
+Add  40000003       1  foobar._dnet._tcp.local.     SRV    IN     0 0 3456 erhant-work.local.
 
 # additional records
-$ dns-sd -Q foobar._dllmd._tcp.local. TXT
+$ dns-sd -Q foobar._dnet._tcp.local. TXT
 A/R  Flags         IF  Name                          Type   Class  Rdata
-Add  40000003      11  foobar._dllmd._tcp.local.     TXT    IN     9 bytes: 08 50 41 54 48 3D 6F 6E 65
+Add  40000003      11  foobar._dnet._tcp.local.     TXT    IN     9 bytes: 08 50 41 54 48 3D 6F 6E 65
 ```
 
 The returned bytes are to be decoded from hex, and can be treat as a string of the form `key=value`. The keys are case-insensitive.

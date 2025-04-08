@@ -4,11 +4,11 @@
 //! To be more type-safe, one can create a dummy struct in C/C++ and use it as a pointer.
 //!
 //! ```c
-//! typedef struct dllmd dllmd_t;
-//! typedef struct dllmd_handle dllmd_handle_t;
+//! typedef struct dnet_p2p dnet_p2p_t;
+//! typedef struct dnet_p2p_handle dnet_p2p_handle_t;
 //! ```
 //!
-//! Each function in this module is prefixed with `dllmd_` to avoid name clashes.
+//! Each function in this module is prefixed with `dnet_p2p_` to avoid name clashes.
 //! They also have their declarations within their docstrings.
 //!
 //! Inspired from: https://jakegoulding.com/rust-ffi-omnibus/objects/
@@ -23,10 +23,10 @@ use super::DllmP2p;
 ///
 /// To be declared in C/C++ as:
 /// ```c
-/// extern dllmd_t* dllmd_new(void);
+/// extern dnet_t* dnet_new(void);
 /// ```
 #[no_mangle]
-pub extern "C" fn dllmd_new() -> *mut DllmP2p {
+pub extern "C" fn dnet_new() -> *mut DllmP2p {
     let keypair = libp2p::identity::Keypair::generate_ed25519();
     debug_eprintln!("Creating DLLMP2P with keypair: {:?}", keypair.public());
     let cancellation = tokio_util::sync::CancellationToken::new();
@@ -41,10 +41,10 @@ pub extern "C" fn dllmd_new() -> *mut DllmP2p {
 ///
 /// To be declared in C/C++ as:
 /// ```c
-/// extern void dllmd_stop(dllmd_t* ptr, dllmd_handle_t* handle_ptr);
+/// extern void dnet_stop(dnet_t* ptr, dnet_handle_t* handle_ptr);
 /// ```
 #[no_mangle]
-pub extern "C" fn dllmd_stop(dllm_ptr: *mut DllmP2p, handle_ptr: *mut JoinHandle<()>) {
+pub extern "C" fn dnet_stop(dllm_ptr: *mut DllmP2p, handle_ptr: *mut JoinHandle<()>) {
     let dllm = unsafe {
         assert!(!dllm_ptr.is_null(), "dllm_ptr is null");
         &mut *dllm_ptr
@@ -69,12 +69,12 @@ pub extern "C" fn dllmd_stop(dllm_ptr: *mut DllmP2p, handle_ptr: *mut JoinHandle
 ///
 /// To be declared in C/C++ as:
 /// ```c
-/// extern void dllmd_free(dllmd_t* ptr);
+/// extern void dnet_free(dnet_t* ptr);
 /// ```
 ///
 /// Does no action if the pointer is `NULL`.
 #[no_mangle]
-pub extern "C" fn dllmd_free(dllm_ptr: *mut DllmP2p) {
+pub extern "C" fn dnet_free(dllm_ptr: *mut DllmP2p) {
     if dllm_ptr.is_null() {
         return;
     }
@@ -90,12 +90,12 @@ pub extern "C" fn dllmd_free(dllm_ptr: *mut DllmP2p) {
 ///
 /// To be declared in C/C++ as:
 /// ```c
-/// extern dllmd_handle_t* dllmd_start(dllmd_t* ptr, const char* addr);
+/// extern dnet_handle_t* dnet_start(dnet_t* ptr, const char* addr);
 /// ```
 ///
-/// The returned handle should be passed to [`dllmd_stop()`] to stop the daemon gracefully.
+/// The returned handle should be passed to [`dnet_stop()`] to stop the daemon gracefully.
 #[no_mangle]
-pub extern "C" fn dllmd_start(
+pub extern "C" fn dnet_start(
     dllm_ptr: *mut DllmP2p,
     addr_ptr: *const c_char,
 ) -> *mut JoinHandle<()> {
@@ -133,15 +133,15 @@ pub extern "C" fn dllmd_start(
 ///
 /// To be declared in C/C++ as:
 /// ```c
-/// extern int dllmd_publish(dllmd_t* ptr, const char* data, size_t data_len);
+/// extern int dnet_publish(dnet_t* ptr, const char* data, size_t data_len);
 /// ```
 ///
 /// Returns non-zero on error.
 #[no_mangle]
-pub fn dllmd_publish(dllm_ptr: *mut DllmP2p, data_ptr: *const u8, data_len: usize) -> i32 {
-    const DLLMD_PUBLISH_ERR_INSUFFICIENT_PEERS: i32 = -1;
-    const DLLMD_PUBLISH_ERR_MSG_TOO_LARGE: i32 = -2;
-    const DLLMD_PUBLISH_ERR_UNHANDLED: i32 = -3;
+pub fn dnet_publish(dllm_ptr: *mut DllmP2p, data_ptr: *const u8, data_len: usize) -> i32 {
+    const DNET_PUBLISH_ERR_INSUFFICIENT_PEERS: i32 = -1;
+    const DNET_PUBLISH_ERR_MSG_TOO_LARGE: i32 = -2;
+    const DNET_PUBLISH_ERR_UNHANDLED: i32 = -3;
 
     let dllm = unsafe {
         assert!(!dllm_ptr.is_null());
@@ -153,11 +153,11 @@ pub fn dllmd_publish(dllm_ptr: *mut DllmP2p, data_ptr: *const u8, data_len: usiz
     match dllm.publish(DllmP2p::DLLM_TOPIC, data) {
         Ok(_) => 0,
         Err(publish_err) => match publish_err {
-            PublishError::MessageTooLarge => DLLMD_PUBLISH_ERR_MSG_TOO_LARGE,
-            PublishError::InsufficientPeers => DLLMD_PUBLISH_ERR_INSUFFICIENT_PEERS,
+            PublishError::MessageTooLarge => DNET_PUBLISH_ERR_MSG_TOO_LARGE,
+            PublishError::InsufficientPeers => DNET_PUBLISH_ERR_INSUFFICIENT_PEERS,
             _ => {
                 debug_eprintln!("Unhandled error: {:?}", publish_err);
-                DLLMD_PUBLISH_ERR_UNHANDLED
+                DNET_PUBLISH_ERR_UNHANDLED
             }
         },
     }
@@ -167,12 +167,12 @@ pub fn dllmd_publish(dllm_ptr: *mut DllmP2p, data_ptr: *const u8, data_len: usiz
 ///
 /// To be declared in C/C++ as:
 /// ```c
-/// extern int dllmd_receive(dllmd_t *ptr, void *buf, size_t buf_size, uint64_t timeout_ms);
+/// extern int dnet_receive(dnet_t *ptr, void *buf, size_t buf_size, uint64_t timeout_ms);
 /// ```
 ///
 /// Returns the number of bytes received on success; othewrwise, returns -1.
 #[no_mangle]
-pub fn dllmd_receive(
+pub fn dnet_receive(
     dllm_ptr: *mut DllmP2p,
     buf: *const u8,
     buf_size: usize,

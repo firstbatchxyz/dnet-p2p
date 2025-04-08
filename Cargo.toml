@@ -1,5 +1,5 @@
 [package]
-name = "dllmd"
+name = "dnet-p2p"
 version = "0.0.1"
 edition = "2021"
 authors = ["erhant"]

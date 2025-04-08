@@ -680,7 +680,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "dllmd"
+name = "dnet-p2p"
 version = "0.0.1"
 dependencies = [
  "clap",

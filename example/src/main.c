@@ -3,7 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "dllmd.h"
+#include "dnet.h"
 
 static int is_running = 1;
 
@@ -12,11 +12,11 @@ static inline void signal_handler(int signal) {
   is_running = 0;
 }
 
-static void listen_mode(dllmd_t *dllmd) {
+static void listen_mode(dnet_t *dnet) {
   char buf[256];
   while (is_running) {
     int timeout_ms = 400;
-    int bytes = dllmd_receive(dllmd, buf, sizeof(buf), timeout_ms);
+    int bytes = dnet_receive(dnet, buf, sizeof(buf), timeout_ms);
     if (bytes < 0) {
       fprintf(stderr, "Failed to receive message\n");
       break;
@@ -28,8 +28,8 @@ static void listen_mode(dllmd_t *dllmd) {
   }
 }
 
-static void send_mode(dllmd_t *dllmd, const char *message) {
-  int ret = dllmd_publish(dllmd, message, strlen(message));
+static void send_mode(dnet_t *dnet, const char *message) {
+  int ret = dnet_publish(dnet, message, strlen(message));
   if (ret != 0) {
     fprintf(stderr, "Failed to publish message: %d\n", ret);
   } else {
@@ -50,20 +50,20 @@ int main(int argc, char *argv[]) {
   }
 
   signal(SIGINT, &signal_handler);
-  dllmd_t *dllmd = dllmd_new();
-  if (!dllmd) {
-    fprintf(stderr, "Failed to create dllmd instance\n");
+  dnet_t *dnet = dnet_new();
+  if (!dnet) {
+    fprintf(stderr, "Failed to create dnet instance\n");
     return 1;
   }
-  dllmd_handle_t *dllm_handle = dllmd_start(dllmd, "/ip4/0.0.0.0/tcp/0");
+  dnet_handle_t *dllm_handle = dnet_start(dnet, "/ip4/0.0.0.0/tcp/0");
 
   if (strcmp(argv[1], "listen") == 0) {
-    listen_mode(dllmd);
+    listen_mode(dnet);
   } else if (strcmp(argv[1], "send") == 0) {
     if (argc < 3) {
       fprintf(stderr, "Send command requires a message\n");
     } else {
-      send_mode(dllmd, argv[2]);
+      send_mode(dnet, argv[2]);
     }
   } else if (strcmp(argv[1], "matmul") == 0) {
     matmul_example();
@@ -71,8 +71,8 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "Unknown command: %s\n", argv[1]);
   }
 
-  dllmd_stop(dllmd, dllm_handle);
-  dllmd_free(dllmd);
+  dnet_stop(dnet, dllm_handle);
+  dnet_free(dnet);
   signal(SIGINT, SIG_DFL);
   printf("Bye!\n");
   return 0;

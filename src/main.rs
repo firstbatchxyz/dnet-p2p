@@ -1,28 +1,28 @@
-use clap::{Parser, Subcommand};
+// use clap::{Parser, Subcommand};
 use debug_print::debug_eprintln;
-use dllmd::DllmP2p;
+use dnet_p2p::DllmP2p;
 use libp2p::identity::Keypair;
 use tokio_util::sync::CancellationToken;
 
-#[derive(Subcommand)]
-pub enum Commands {
-    /// Run the dLLM daemon.
-    Daemon,
-}
+// #[derive(Subcommand)]
+// pub enum Commands {
+//     /// Run the dLLM daemon.
+//     Daemon,
+// }
 
-#[derive(Parser)]
-#[command(version, about)]
-struct Cli {
-    #[command(subcommand)]
-    command: Commands,
-}
+// #[derive(Parser)]
+// #[command(version, about)]
+// struct Cli {
+//     #[command(subcommand)]
+//     command: Commands,
+// }
 
 #[tokio::main]
 async fn main() {
     env_logger::builder()
         .format_timestamp_millis()
         .filter(None, log::LevelFilter::Off)
-        .filter_module("dllmd", log::LevelFilter::Debug)
+        .filter_module("dnet-p2p", log::LevelFilter::Debug)
         .parse_default_env()
         .init();
 
@@ -44,8 +44,6 @@ async fn main() {
 
     if let Err(e) = handle.await {
         log::error!("Error while waiting for termination: {}", e);
-    } else {
-        log::info!("Termination signal received");
     }
 
     debug_eprintln!("Bye!\n");
