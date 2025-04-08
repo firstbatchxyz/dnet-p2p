@@ -14,6 +14,7 @@
 //! Inspired from: https://jakegoulding.com/rust-ffi-omnibus/objects/
 
 use debug_print::debug_eprintln;
+use libp2p::gossipsub::PublishError;
 use std::{ffi::c_char, thread::JoinHandle, time::Duration};
 
 use super::DllmP2p;
@@ -138,6 +139,10 @@ pub extern "C" fn dllmd_start(
 /// Returns non-zero on error.
 #[no_mangle]
 pub fn dllmd_publish(dllm_ptr: *mut DllmP2p, data_ptr: *const u8, data_len: usize) -> i32 {
+    const DLLMD_PUBLISH_ERR_INSUFFICIENT_PEERS: i32 = -1;
+    const DLLMD_PUBLISH_ERR_MSG_TOO_LARGE: i32 = -2;
+    const DLLMD_PUBLISH_ERR_UNHANDLED: i32 = -3;
+
     let dllm = unsafe {
         assert!(!dllm_ptr.is_null());
         &mut *dllm_ptr
@@ -147,7 +152,14 @@ pub fn dllmd_publish(dllm_ptr: *mut DllmP2p, data_ptr: *const u8, data_len: usiz
 
     match dllm.publish(DllmP2p::DLLM_TOPIC, data) {
         Ok(_) => 0,
-        Err(_) => -1,
+        Err(publish_err) => match publish_err {
+            PublishError::MessageTooLarge => DLLMD_PUBLISH_ERR_MSG_TOO_LARGE,
+            PublishError::InsufficientPeers => DLLMD_PUBLISH_ERR_INSUFFICIENT_PEERS,
+            _ => {
+                debug_eprintln!("Unhandled error: {:?}", publish_err);
+                DLLMD_PUBLISH_ERR_UNHANDLED
+            }
+        },
     }
 }
 

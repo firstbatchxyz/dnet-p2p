@@ -17,10 +17,10 @@ See the header file for more specific instructions.
 
 ## Usage as CLI
 
-Simple run the daemon with:
+Simply run the daemon with:
 
 ```sh
-cargo run dllmd
+cargo run
 ```
 
 TODO: !!!

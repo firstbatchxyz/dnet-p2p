@@ -55,7 +55,7 @@ impl super::DllmP2p {
                     message.data.len()
                 );
                 if let Err(e) = self.message_tx.send(message) {
-                    debug_eprintln!("Failed to send message: {e}");
+                    debug_eprintln!("Failed to record message: {e}");
                 }
             }
             _ => {}

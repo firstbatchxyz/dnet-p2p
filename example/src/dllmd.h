@@ -8,8 +8,6 @@
 typedef struct dllmd_handle dllmd_handle_t;
 typedef struct dllmd dllmd_t;
 
-#define DLLMD_NO_TIMEOUT 0
-
 /**
  * @brief Create a new dllmd instance
  * @return dllmd_t* pointer to the dllmd instance
@@ -37,6 +35,9 @@ extern dllmd_handle_t *dllmd_start(dllmd_t *ptr, const char *addr);
  */
 extern void dllmd_stop(dllmd_t *ptr, dllmd_handle_t *handle_ptr);
 
+#define DLLMD_PUBLISH_ERR_INSUFFICIENT_PEERS -1
+#define DLLMD_PUBLISH_ERR_MSG_TOO_LARGE -2
+#define DLLMD_PUBLISH_ERR_UNHANDLED -3
 /**
  * @brief Publishes a message to all connected peers
  * @param ptr pointer to the dllmd instance
@@ -44,8 +45,9 @@ extern void dllmd_stop(dllmd_t *ptr, dllmd_handle_t *handle_ptr);
  * @param data_len length of `data`
  * @return non-zero if error
  */
-extern int dllmd_publish(dllmd_t *ptr, const char *data, size_t data_len);
+extern int dllmd_publish(dllmd_t *ptr, const void *data, size_t data_len);
 
+#define DLLMD_RECEIVE_NO_TIMEOUT 0
 /**
  * @brief Receives a message that has been sent to this peer.
  * @param ptr pointer to the dllmd instance

@@ -28,6 +28,17 @@ static void listen_mode(dllmd_t *dllmd) {
   }
 }
 
+static void send_mode(dllmd_t *dllmd, const char *message) {
+  int ret = dllmd_publish(dllmd, message, strlen(message));
+  if (ret != 0) {
+    fprintf(stderr, "Failed to publish message: %d\n", ret);
+  } else {
+    printf("Published message: %s\n", message);
+  }
+}
+
+static void matmul_example() { printf("TODO: Matrix multiplication\n"); }
+
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     fprintf(stderr, "Usage: %s <command> [args]\n", argv[0]);
@@ -52,17 +63,10 @@ int main(int argc, char *argv[]) {
     if (argc < 3) {
       fprintf(stderr, "Send command requires a message\n");
     } else {
-      const char *message = argv[2];
-      // wait for a while
-      sleep(10);
-      if (dllmd_publish(dllmd, message, strlen(message))) {
-        fprintf(stderr, "Failed to publish message\n");
-      } else {
-        printf("Published message: %s\n", message);
-      }
+      send_mode(dllmd, argv[2]);
     }
   } else if (strcmp(argv[1], "matmul") == 0) {
-    printf("TODO: Matrix multiplication\n");
+    matmul_example();
   } else {
     fprintf(stderr, "Unknown command: %s\n", argv[1]);
   }
