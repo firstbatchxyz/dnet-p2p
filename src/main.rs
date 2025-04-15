@@ -1,28 +1,32 @@
-// use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use debug_print::debug_eprintln;
-use dnet_p2p::DllmP2p;
+use dnet_p2p::{browse_mdns, register_mdns, DllmP2p};
 use libp2p::identity::Keypair;
 use tokio_util::sync::CancellationToken;
 
-// #[derive(Subcommand)]
-// pub enum Commands {
-//     /// Run the dLLM daemon.
-//     Daemon,
-// }
+#[derive(Subcommand)]
+pub enum Commands {
+    /// Run the dnet daemon.
+    P2P,
+    /// Register to mDNS service.
+    MdnsRegister,
+    /// Browse mDNS services.
+    MdnsBrowse,
+}
 
-// #[derive(Parser)]
-// #[command(version, about)]
-// struct Cli {
-//     #[command(subcommand)]
-//     command: Commands,
-// }
+#[derive(Parser)]
+#[command(version, about)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
 
 #[tokio::main]
 async fn main() {
     env_logger::builder()
         .format_timestamp_millis()
         .filter(None, log::LevelFilter::Off)
-        .filter_module("dnet-p2p", log::LevelFilter::Debug)
+        .filter_module("dnet_p2p", log::LevelFilter::Debug)
         .parse_default_env()
         .init();
 
@@ -32,15 +36,23 @@ async fn main() {
     let cancellation_clone = cancellation.clone();
     let handle = tokio::spawn(async move { wait_for_termination(cancellation_clone).await });
 
-    // let args = Cli::parse();
-    // match args.command {
-    //     Commands::Daemon => {
-    DllmP2p::new(Keypair::generate_ed25519(), cancellation)
-        .unwrap()
-        .run_daemon(None)
-        .await;
-    // }
-    // };
+    let args = Cli::parse();
+    match args.command {
+        Commands::P2P => {
+            DllmP2p::new(Keypair::generate_ed25519(), cancellation)
+                .unwrap()
+                .run_daemon(None)
+                .await;
+        }
+        Commands::MdnsRegister => {
+            register_mdns("instance2".to_string(), "host1".to_string(), cancellation)
+                .await
+                .unwrap();
+        }
+        Commands::MdnsBrowse => {
+            browse_mdns(cancellation).await.unwrap();
+        }
+    };
 
     if let Err(e) = handle.await {
         log::error!("Error while waiting for termination: {}", e);
