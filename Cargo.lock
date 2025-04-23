@@ -691,6 +691,7 @@ dependencies = [
  "libp2p",
  "log",
  "mdns-sd",
+ "mio",
  "tokio",
  "tokio-util",
 ]

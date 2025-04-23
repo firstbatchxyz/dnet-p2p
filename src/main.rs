@@ -1,17 +1,15 @@
 use clap::{Parser, Subcommand};
 use debug_print::debug_eprintln;
-use dnet_p2p::{browse_mdns, register_mdns, DllmP2p};
+use dnet_p2p::{browse_mdns, register_mdns};
 use libp2p::identity::Keypair;
 use tokio_util::sync::CancellationToken;
 
 #[derive(Subcommand)]
 pub enum Commands {
     /// Run the dnet daemon.
-    P2P,
-    /// Register to mDNS service.
-    MdnsRegister,
-    /// Browse mDNS services.
-    MdnsBrowse,
+    Start,
+    /// Browse dnet services around.
+    Browse,
 }
 
 #[derive(Parser)]
@@ -38,18 +36,10 @@ async fn main() {
 
     let args = Cli::parse();
     match args.command {
-        Commands::P2P => {
-            DllmP2p::new(Keypair::generate_ed25519(), cancellation)
-                .unwrap()
-                .run_daemon(None)
-                .await;
+        Commands::Start => {
+            todo!();
         }
-        Commands::MdnsRegister => {
-            register_mdns("instance2".to_string(), "host1".to_string(), cancellation)
-                .await
-                .unwrap();
-        }
-        Commands::MdnsBrowse => {
+        Commands::Browse => {
             browse_mdns(cancellation).await.unwrap();
         }
     };

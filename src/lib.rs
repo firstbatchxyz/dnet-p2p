@@ -1,11 +1,9 @@
-mod p2p;
-pub use p2p::DllmP2p;
+/// FFI-related `extern` functions for dnet.
+mod ffi;
+pub use ffi::*;
 
-mod echo;
-pub use echo::*;
-
-/// Networking code, e.g. binding to sockets, TCP/UDP.
-mod network;
+/// Service itself, e.g. a TCP socket.
+mod service;
 
 /// Wrapper of [`mdns-sd`]
 mod mdns;
