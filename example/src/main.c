@@ -55,7 +55,7 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "Failed to create dnet instance\n");
     return 1;
   }
-  dnet_handle_t *dllm_handle = dnet_start(dnet, "/ip4/0.0.0.0/tcp/0");
+  dnet_handle_t *dnet_handle = dnet_start(dnet, "/ip4/0.0.0.0/tcp/0");
 
   if (strcmp(argv[1], "listen") == 0) {
     listen_mode(dnet);
@@ -71,7 +71,7 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "Unknown command: %s\n", argv[1]);
   }
 
-  dnet_stop(dnet, dllm_handle);
+  dnet_stop(dnet, dnet_handle);
   dnet_free(dnet);
   signal(SIGINT, SIG_DFL);
   printf("Bye!\n");

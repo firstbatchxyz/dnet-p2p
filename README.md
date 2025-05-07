@@ -29,22 +29,22 @@ TODO: !!!
 
 When the daemon is running, we can detect the libp2p MDNS service with the [dns-sd](https://manp.gs/mac/1/dns-sd) standard tool (following the definitions in [libp2p-mdns specification](https://github.com/libp2p/specs/blob/master/discovery/mdns.md)).
 
-First, we can make a DNS-SD meta-query to see that indeed `_p2p._udp` is registered (can be piped to `grep p2p`):
+First, we can make a DNS-SD meta-query to see that indeed `_dnet_._tcp` is registered (can be piped to `grep dnet`):
 
 ```sh
 $ dns-sd -Q _services._dns-sd._udp.local PTR
 # ...
 A/R  Flags         IF  Name                          Type   Class  Rdata
-Add  2             12  _services._dns-sd._udp.local. PTR    IN     _p2p._udp.local.
+Add  2             12  _services._dns-sd._udp.local. PTR    IN     _dnet_._tcp.local.
 # ...
 ```
 
-Then, we can query PTRs of the service at the dLLM mDNS domain with:
+Then, we can query PTRs of the service at the dnet mDNS domain with:
 
 ```sh
 $ dns-sd -Q _dnet._tcp.local. PTR
 A/R  Flags         IF  Name                      Type   Class  Rdata
-Add  40000003      11  _dnet._tcp.local          PTR    IN     <service-name-here>
+Add  40000003      11  _dnet._tcp.local          PTR    IN     <your-service>
 # ...
 ```
 
@@ -52,18 +52,18 @@ The `Rdata` returned by a PTR record points to another service, accessed by the 
 
 ```sh
 # service records
-$ dns-sd -Q <service-name-here> SRV
+$ dns-sd -Q <your-service> SRV
 A/R  Flags         IF  Name                          Type   Class  Rdata
-Add  40000003       1  foobar._dnet._tcp.local.     SRV    IN     0 0 3456 erhant-work.local.
+Add  40000003       1  <your-instance>._dnet._tcp.local.     SRV    IN     0 0 3456 <your-hostname>.local.
 
 # additional records
-$ dns-sd -Q <service-name-here> TXT
+$ dns-sd -Q <your-service> TXT
 A/R  Flags         IF  Name                          Type   Class  Rdata
-Add  40000003      11  foobar._dnet._tcp.local.     TXT    IN     9 bytes: 08 50 41 54 48 3D 6F 6E 65
+Add  40000003      11  <your-instance>._dnet._tcp.local.     TXT    IN     9 bytes: 08 50 41 54 48 3D 6F 6E 65
 ```
 
 The returned bytes are to be decoded from hex, and can be treat as a string of the form `key=value`. The keys are case-insensitive.
 
 > [!NOTE]
 >
-> When a dLLM service is no longer online, its SRV records are gone, but TXT records may still be there.
+> When a `dnet` service is no longer online, its SRV records are gone, but TXT records may still be there.
