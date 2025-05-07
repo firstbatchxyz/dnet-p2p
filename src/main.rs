@@ -1,7 +1,5 @@
 use clap::{Parser, Subcommand};
-use debug_print::debug_eprintln;
-use dnet_p2p::{browse_mdns, register_mdns};
-use libp2p::identity::Keypair;
+use dnet_p2p::{DnetMDNSDameon, DnetService};
 use tokio_util::sync::CancellationToken;
 
 #[derive(Subcommand)]
@@ -20,7 +18,7 @@ struct Cli {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> eyre::Result<()> {
     env_logger::builder()
         .format_timestamp_millis()
         .filter(None, log::LevelFilter::Off)
@@ -32,23 +30,45 @@ async fn main() {
 
     // spawn a task to listen for termination signals
     let cancellation_clone = cancellation.clone();
-    let handle = tokio::spawn(async move { wait_for_termination(cancellation_clone).await });
+    let handle_for_cancellation =
+        tokio::spawn(async move { wait_for_termination(cancellation_clone).await });
 
     let args = Cli::parse();
+    let mdns = DnetMDNSDameon::new(cancellation.clone());
     match args.command {
         Commands::Start => {
-            todo!();
+            // TODO: get this from env
+            let port = 5678;
+
+            // spawn a task to listen for incoming connections
+            let service = DnetService::new(port, cancellation.clone());
+            let handle_for_service = tokio::spawn(async move {
+                service.start().await.unwrap();
+            });
+
+            let instance_name = "erhan1";
+            let hostname = "erhan-mdns"; // FIXME: use gethostname()
+            if let Err(e) = mdns.register(instance_name, hostname, port, None).await {
+                log::error!("Failed to register mDNS service: {}", e);
+            };
+            // handle_for_service.await??; // FIXME: ugly
+            log::info!("Aborting service...");
+            if let Err(e) = handle_for_service.await {
+                log::error!("Error while waiting for service: {}", e);
+            }
         }
         Commands::Browse => {
-            browse_mdns(cancellation).await.unwrap();
+            mdns.browse().await?;
         }
     };
 
-    if let Err(e) = handle.await {
-        log::error!("Error while waiting for termination: {}", e);
+    if let Err(e) = handle_for_cancellation.await {
+        log::error!("Error while waiting for handles: {}", e);
     }
 
-    debug_eprintln!("Bye!\n");
+    log::info!("Bye!\n");
+
+    Ok(())
 }
 
 /// Waits for various termination signals, and cancels the given token when the signal is received.

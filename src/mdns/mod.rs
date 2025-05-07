@@ -1,7 +1,15 @@
 mod browse;
-pub use browse::browse_mdns;
-
 mod register;
-pub use register::register_mdns;
 
-pub const DNET_SERVICE_TYPE: &str = "_dnet._tcp.local.";
+use tokio_util::sync::CancellationToken;
+
+pub struct DnetMDNSDameon {
+    cancellation: CancellationToken,
+}
+
+impl DnetMDNSDameon {
+    pub const SERVICE_TYPE: &'static str = "_dnet._tcp.local.";
+    pub fn new(cancellation: CancellationToken) -> Self {
+        Self { cancellation }
+    }
+}

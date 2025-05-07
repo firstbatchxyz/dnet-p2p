@@ -1,93 +1,98 @@
 use mdns_sd::{DaemonEvent, IntoTxtProperties, ServiceDaemon, ServiceInfo, UnregisterStatus};
 
-use tokio_util::sync::CancellationToken;
+impl super::DnetMDNSDameon {
+    pub async fn register(
+        &self,
+        instance_name: &str,
+        hostname: &str,
+        port: u16, // this should be the port that `DnetService` is listening on
+        properties: impl IntoTxtProperties,
+    ) -> eyre::Result<()> {
+        let mdns = ServiceDaemon::new()?;
 
-use crate::mdns::DNET_SERVICE_TYPE;
+        // check your own hostname if it exists
+        // if let Ok(HostnameResolutionEvent::AddressesFound(existing_hostname, addrs)) =
+        //     mdns.resolve_hostname(&service_hostname, None)?.recv()
+        // {
+        //     println!(
+        //         "Host {} already exists at {:?}, unregistering.",
+        //         existing_hostname, addrs
+        //     );
+        //     mdns.stop_resolve_hostname(&service_hostname).unwrap();
+        // } else {
+        //     mdns.stop_resolve_hostname(&service_hostname).unwrap();
 
-pub async fn register_mdns(
-    instance_name: String,
-    hostname: String,
-    cancellation: CancellationToken,
-    port: u16,
-    properties: impl IntoTxtProperties,
-) -> eyre::Result<()> {
-    let mdns = ServiceDaemon::new()?;
-    let service_hostname = format!("{}.local.", hostname);
+        // register your own hostname
+        log::debug!("Registering host {} instance {}", hostname, instance_name);
+        let service_info = ServiceInfo::new(
+            Self::SERVICE_TYPE,
+            instance_name,
+            &format!("{}.local.", hostname),
+            "", // thanks to `enable_addr_auto` we can give this as empty string
+            port,
+            properties,
+        )
+        .expect("valid service info")
+        // automatically update the addresses of this service, when IP address(es) are added or removed on the host
+        .enable_addr_auto();
 
-    // check your own hostname if it exists
-    // if let Ok(HostnameResolutionEvent::AddressesFound(existing_hostname, addrs)) =
-    //     mdns.resolve_hostname(&service_hostname, None)?.recv()
-    // {
-    //     println!(
-    //         "Host {} already exists at {:?}, unregistering.",
-    //         existing_hostname, addrs
-    //     );
-    //     mdns.stop_resolve_hostname(&service_hostname).unwrap();
-    // } else {
-    //     mdns.stop_resolve_hostname(&service_hostname).unwrap();
+        let service_fullname = service_info.get_fullname().to_string();
+        mdns.register(service_info)
+            .expect("Failed to register mDNS service");
 
-    // register your own hostname
-    println!("Registering hostname {}", hostname);
-    let my_addrs = "";
+        log::info!("Registered service {service_fullname}",);
 
-    // Register a service.
-    let service_type = DNET_SERVICE_TYPE;
-    let service_info = ServiceInfo::new(
-        service_type,
-        &instance_name,
-        &service_hostname,
-        my_addrs,
-        port,
-        properties,
-    )
-    .expect("valid service info")
-    .enable_addr_auto();
-
-    // Optionally, we can monitor the daemon events.
-    let monitor = mdns.monitor().expect("Failed to monitor the daemon");
-    let service_fullname = service_info.get_fullname().to_string();
-    mdns.register(service_info)
-        .expect("Failed to register mDNS service");
-
-    println!("Registered service {}.{}", &instance_name, &service_type);
-
-    loop {
-        tokio::select! {
-          // monitor mdns events
-          event_opt = monitor.recv_async() => {
-              match event_opt {
-                  Ok(event) => {
-                      println!("Daemon event: {:?}", &event);
-                      if let DaemonEvent::Error(e) = event {
-                          println!("Failed: {}", e);
+        // monitor the daemon for events
+        let monitor = mdns.monitor().expect("Failed to monitor the daemon");
+        loop {
+            tokio::select! {
+              // monitor mdns events
+              event_opt = monitor.recv_async() => {
+                  match event_opt {
+                      Ok(event) => {
+                          match event {
+                            DaemonEvent::Announce(service, interface) => {
+                                log::debug!("Service {service} announced at {interface}");
+                            },
+                            DaemonEvent::Error(err) => {
+                                log::error!("Daemon error: {}", err);
+                            },
+                            other => {
+                                log::trace!("Daemon event: {:?}", other);
+                            }
+                          };
+                      },
+                      Err(e) => {
+                          log::error!("Error receiving event: {:?}", e);
+                          break;
                       }
-                  },
-                  Err(e) => {
-                      log::error!("Error receiving event: {:?}", e);
-                      break;
+                };
+              },
+              // shutdown daemon
+              _ = self.cancellation.cancelled() => {
+                log::debug!("Cancellation signal received, unregistering service");
+                  let receiver = mdns.unregister(&service_fullname).unwrap();
+                  while let Ok(status) = receiver.recv() {
+                      match status {
+                        UnregisterStatus::OK => {
+                          log::warn!("Service {service_fullname} unregistered");
+                          return Ok(());
+                        }
+                        UnregisterStatus::NotFound => {
+                          log::warn!("Service {service_fullname} not found!");
+                          return Ok(());
+                        }
+                      }
                   }
-            };
-          },
-          // bind to the service
-          // shutdown daemon
-          _ = cancellation.cancelled() => {
-              let receiver = mdns.unregister(&service_fullname).unwrap();
-              while let Ok(status) = receiver.recv() {
-                  match status {
-                    UnregisterStatus::OK => {
-                      println!("Service {service_fullname} unregistered");
-                      return Ok(());
-                    }
-                    UnregisterStatus::NotFound => {
-                      println!("Service {service_fullname} not found!");
-                      return Ok(());
-                    }
-                  }
-              }
-          },
+              },
 
+            }
         }
-    }
 
-    Ok(())
+        if let Ok(status) = mdns.shutdown().unwrap().recv() {
+            println!("Daemon status: {:?}", status);
+        }
+
+        Ok(())
+    }
 }

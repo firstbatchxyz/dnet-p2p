@@ -1,54 +1,86 @@
-use std::io::{Read, Result};
-use std::net::{TcpListener, TcpStream};
-use std::thread;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::select;
+use tokio_util::sync::CancellationToken;
 
-pub struct Service {
-    address: String,
+pub struct DnetService {
+    port: u16,
+    cancellation: CancellationToken,
 }
 
-impl Service {
-    pub fn new(port: u16) -> Self {
-        Service {
-            address: format!("127.0.0.1:{port}"),
-        }
+impl DnetService {
+    pub fn new(port: u16, cancellation: CancellationToken) -> Self {
+        Self { port, cancellation }
     }
 
-    pub fn start(&self) -> Result<()> {
-        let listener = TcpListener::bind(&self.address)?;
-        println!("Service listening on {}", self.address);
+    pub async fn start(&self) -> eyre::Result<()> {
+        let addr = format!("127.0.0.1:{}", self.port);
 
-        // this is a blocking call
-        for stream in listener.incoming() {
-            match stream {
-                Ok(stream) => {
-                    thread::spawn(move || {
-                        if let Err(e) = Self::handle_connection(stream) {
-                            eprintln!("Error handling connection: {}", e);
-                        }
-                    });
+        let listener = TcpListener::bind(&addr).await?;
+        // let client = TcpStream::connect(&addr).await?;
+
+        loop {
+            select! {
+              // handle incoming connections
+              accept_result = listener.accept() => {
+                match accept_result {
+                  Ok((connection, _)) => {
+                    if let Err(e) = self.handle_connection(connection).await {
+                      log::error!("Failed to handle connection: {e}");
+                    }
+                  }
+                  Err(err) => {
+                    log::error!("Failed to accept connection: {err}");
+                  }
                 }
-                Err(e) => {
-                    eprintln!("Error accepting connection: {}", e);
-                }
+              }
+
+              // FIXME: client handling logic here
+
+
+              _ = self.cancellation.cancelled() => break,
             }
         }
 
         Ok(())
     }
 
-    /// Handles a single connection from a client.
-    fn handle_connection(mut stream: TcpStream) -> Result<()> {
-        let mut buffer = [0; 1024];
+    async fn handle_connection(&self, connection: TcpStream) -> eyre::Result<()> {
+        log::info!("Accepted connection from {}", connection.peer_addr()?);
 
-        loop {
-            let bytes_read = stream.read(&mut buffer)?;
-            if bytes_read == 0 {
-                break; // connection closed
-            }
+        // wait for data to be available
+        connection.readable().await?;
 
-            let message = String::from_utf8_lossy(&buffer[..bytes_read]);
-            println!("Received message: {}", message);
+        let mut buffer = vec![0; 1024];
+        let n = connection.try_read(&mut buffer)?;
+        if n == 0 {
+            log::warn!("Connection closed by peer");
+            return Ok(());
         }
+
+        // process data
+        let data = &buffer[..n];
+        log::info!("Received data: {:?}", String::from_utf8_lossy(data));
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio::io::AsyncWriteExt;
+
+    use super::*;
+
+    // cargo test --package dnet-p2p --lib -- service::tests::test_send_dummy --exact --show-output
+    #[tokio::test]
+    async fn test_send_dummy() -> eyre::Result<()> {
+        let port = 5678;
+        let addr = format!("127.0.0.1:{port}");
+        let mut client = TcpStream::connect(&addr).await?;
+
+        // send hello world
+        let msg = b"Hello, world!";
+        client.write_all(msg).await?;
 
         Ok(())
     }

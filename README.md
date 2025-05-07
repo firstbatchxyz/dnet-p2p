@@ -42,9 +42,9 @@ Add  2             12  _services._dns-sd._udp.local. PTR    IN     _p2p._udp.loc
 Then, we can query PTRs of the service at the dLLM mDNS domain with:
 
 ```sh
-$ dns-sd -Q _p2p._udp.local. PTR
+$ dns-sd -Q _dnet._tcp.local. PTR
 A/R  Flags         IF  Name                      Type   Class  Rdata
-Add  40000003      11  _p2p._udp.local           PTR    IN     <some-text>.
+Add  40000003      11  _dnet._tcp.local          PTR    IN     <service-name-here>
 # ...
 ```
 
@@ -52,12 +52,12 @@ The `Rdata` returned by a PTR record points to another service, accessed by the 
 
 ```sh
 # service records
-$ dns-sd -Q gZSkS6ITRpeQHyO0b99O0qV8imlYkJgdZCf. SRV
+$ dns-sd -Q <service-name-here> SRV
 A/R  Flags         IF  Name                          Type   Class  Rdata
 Add  40000003       1  foobar._dnet._tcp.local.     SRV    IN     0 0 3456 erhant-work.local.
 
 # additional records
-$ dns-sd -Q foobar._dnet._tcp.local. TXT
+$ dns-sd -Q <service-name-here> TXT
 A/R  Flags         IF  Name                          Type   Class  Rdata
 Add  40000003      11  foobar._dnet._tcp.local.     TXT    IN     9 bytes: 08 50 41 54 48 3D 6F 6E 65
 ```
