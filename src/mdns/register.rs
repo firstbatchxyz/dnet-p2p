@@ -1,12 +1,17 @@
-use mdns_sd::{DaemonEvent, IntoTxtProperties, ServiceDaemon, ServiceInfo, UnregisterStatus};
+use mdns_sd::{DaemonEvent, ServiceDaemon, ServiceInfo, UnregisterStatus};
+use std::collections::HashMap;
 
 impl super::DnetMDNSDameon {
+    /// Registers a service with the given instance name and hostname.
+    ///
+    /// - `instance_name`: The name of the service instance, e.g. `dnet1`
+    /// - `hostname`: The hostname of the service, e.g. `john-doe-macbook`
+    /// - `service_port`: The port that the [`crate::DnetService`] is listening on.
     pub async fn register(
         &self,
         instance_name: &str,
         hostname: &str,
-        port: u16, // this should be the port that `DnetService` is listening on
-        properties: impl IntoTxtProperties,
+        service_port: u16,
     ) -> eyre::Result<()> {
         let mdns = ServiceDaemon::new()?;
 
@@ -23,14 +28,14 @@ impl super::DnetMDNSDameon {
         //     mdns.stop_resolve_hostname(&service_hostname).unwrap();
 
         // register your own hostname
-        log::debug!("Registering host {} instance {}", hostname, instance_name);
+        log::debug!("Registering {instance_name} of host {hostname}");
         let service_info = ServiceInfo::new(
             Self::SERVICE_TYPE,
             instance_name,
             &format!("{}.local.", hostname),
             "", // thanks to `enable_addr_auto` we can give this as empty string
-            port,
-            properties,
+            service_port,
+            &self.properties,
         )
         .expect("valid service info")
         // automatically update the addresses of this service, when IP address(es) are added or removed on the host
@@ -90,7 +95,7 @@ impl super::DnetMDNSDameon {
         }
 
         if let Ok(status) = mdns.shutdown().unwrap().recv() {
-            println!("Daemon status: {:?}", status);
+            log::debug!("Daemon status: {:?}", status);
         }
 
         Ok(())

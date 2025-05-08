@@ -38,6 +38,7 @@ async fn main() -> eyre::Result<()> {
     match args.command {
         Commands::Start => {
             // TODO: get this from env
+            // TODO: detect if already in use
             let port = 5678;
 
             // spawn a task to listen for incoming connections
@@ -46,9 +47,9 @@ async fn main() -> eyre::Result<()> {
                 service.start().await.unwrap();
             });
 
-            let instance_name = "erhan1";
+            let instance_name = "erhan2";
             let hostname = "erhan-mdns"; // FIXME: use gethostname()
-            if let Err(e) = mdns.register(instance_name, hostname, port, None).await {
+            if let Err(e) = mdns.register(instance_name, hostname, port).await {
                 log::error!("Failed to register mDNS service: {}", e);
             };
             // handle_for_service.await??; // FIXME: ugly

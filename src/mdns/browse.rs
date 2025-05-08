@@ -1,4 +1,4 @@
-use mdns_sd::{ServiceDaemon, ServiceEvent};
+use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
 
 impl super::DnetMDNSDameon {
     /// Browses for mDNS services and prints the resolved service information.
@@ -10,44 +10,26 @@ impl super::DnetMDNSDameon {
         let receiver = mdns.browse(Self::SERVICE_TYPE).expect("failed to browse");
         loop {
             tokio::select! {
-              _ = self.cancellation.cancelled() => break,
-              event_res = receiver.recv_async() => {
-                  match event_res {
-                    Err(e) => {
-                      log::error!("Error receiving event: {:?}", e);
-                    }
-                    Ok(event) => {
-                      match event {
-                          ServiceEvent::ServiceResolved(info) => {
-                              if info.get_fullname().ends_with(Self::SERVICE_TYPE) {
-                                log::info!(
-                                      "{} resolved at {}:{}",
-                                      info.get_fullname(),
-                                      info.get_hostname(),
-                                      info.get_port(),
-                                  );
-                                  for addr in info.get_addresses_v4().iter() {
-                                      log::info!(" Address: {}", addr);
-                                  }
+                _ = self.cancellation.cancelled() => break,
+                // check for new events
+                event_res = receiver.recv_async() => {
+                    match event_res {
+                        Ok(event) => {
+                            match event {
+                                ServiceEvent::ServiceResolved(info) => {
+                                    self.handle_service_resolved(info);
 
-                                  // txt records
-                                  // for prop in info.get_properties().iter() {
-                                  //     println!(" Property: {}", prop);
-                                  // }
-
-                              } else {
-                                  log::debug!("Ignoring service {}", info.get_fullname());
-                              }
-                          },
-                          ServiceEvent::ServiceRemoved(service_name, fullname) => {
-                              log::warn!("Service {service_name} removed: {fullname}");
-                          },
-                          other_event => {
-                              log::trace!("{:?}", other_event);
-                          }
-                      }
-                  }
-                };
+                                },
+                                ServiceEvent::ServiceRemoved(service_name, fullname) => {
+                                    log::warn!("Service {service_name} removed: {fullname}");
+                                },
+                                other_event => {
+                                    log::trace!("{:?}", other_event);
+                                }
+                            }
+                        },
+                        Err(err) => log::error!("Error receiving event: {err}"),
+                    };
               }
             }
         }
@@ -59,5 +41,35 @@ impl super::DnetMDNSDameon {
         }
 
         Ok(())
+    }
+
+    pub fn handle_service_resolved(&self, info: ServiceInfo) {
+        if info.get_fullname().ends_with(Self::SERVICE_TYPE) {
+            if let Some(addr) = info
+                .get_addresses_v4()
+                .iter()
+                .filter(|addr| addr.is_private())
+                .next()
+            {
+                log::info!(
+                    "{} resolved at host {} listening on {}:{}",
+                    info.get_fullname(),
+                    info.get_hostname(),
+                    addr,
+                    info.get_port(),
+                );
+
+                // TODO: parse these
+                for prop in info.get_properties().iter() {
+                    log::info!(
+                        "{}: {}",
+                        prop.key(),
+                        String::from_utf8_lossy(prop.val().unwrap_or_default())
+                    );
+                }
+            }
+        } else {
+            log::trace!("Ignoring service {}", info.get_fullname());
+        }
     }
 }
