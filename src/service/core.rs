@@ -1,28 +1,41 @@
-use tokio::net::{TcpListener, TcpStream};
-use tokio::select;
+use eyre::Context;
+use tokio::{
+    io::AsyncWriteExt,
+    net::{TcpListener, TcpStream},
+};
 use tokio_util::sync::CancellationToken;
 
+/// Listen on all interfaces on a random port.
+const LISTEN_ADDR: &str = "0.0.0.0:0";
+
 pub struct DnetService {
-    port: u16,
     cancellation: CancellationToken,
+    listener: TcpListener,
 }
 
 impl DnetService {
-    pub fn new(port: u16, cancellation: CancellationToken) -> Self {
-        Self { port, cancellation }
+    pub async fn new(cancellation: CancellationToken) -> eyre::Result<Self> {
+        Ok(Self {
+            cancellation,
+            listener: TcpListener::bind(LISTEN_ADDR).await?,
+        })
+    }
+
+    /// Returns the local port that the service is listening on.
+    pub fn get_port(&self) -> eyre::Result<u16> {
+        self.listener
+            .local_addr()
+            .map(|a| a.port())
+            .wrap_err("could not get local address")
     }
 
     pub async fn start(&self) -> eyre::Result<()> {
-        // TODO: use a better address, this may not be that secure maybe?
-        let addr = format!("0.0.0.0:{}", self.port);
-
-        let listener = TcpListener::bind(&addr).await?;
         // let client = TcpStream::connect(&addr).await?;
 
         loop {
-            select! {
+            tokio::select! {
               // handle incoming connections
-              accept_result = listener.accept() => {
+              accept_result = self.listener.accept() => {
                 match accept_result {
                   Ok((connection, _)) => {
                     if let Err(e) = self.handle_connection(connection).await {
@@ -45,22 +58,23 @@ impl DnetService {
         Ok(())
     }
 
-    async fn handle_connection(&self, connection: TcpStream) -> eyre::Result<()> {
+    async fn handle_connection(&self, mut connection: TcpStream) -> eyre::Result<()> {
         log::info!("Accepted connection from {}", connection.peer_addr()?);
 
-        // wait for data to be available
+        // read the response
         connection.readable().await?;
-
         let mut buffer = vec![0; 1024];
         let n = connection.try_read(&mut buffer)?;
         if n == 0 {
             log::warn!("Connection closed by peer");
             return Ok(());
         }
-
-        // process data
         let data = &buffer[..n];
         log::info!("Received data: {:?}", String::from_utf8_lossy(data));
+
+        // send a response back
+        connection.writable().await?;
+        connection.write_all(b"PONG").await?;
 
         Ok(())
     }
@@ -75,7 +89,7 @@ mod tests {
     // cargo test --package dnet-p2p --lib -- service::core::tests::test_send_dummy --exact --show-output
     #[tokio::test]
     async fn test_send_dummy() -> eyre::Result<()> {
-        let port = 5678;
+        let port = 57421;
         // let addr = format!("127.0.0.1:{port}");
         let addr = format!("192.168.1.119:{port}");
 

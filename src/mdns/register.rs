@@ -1,5 +1,4 @@
 use mdns_sd::{DaemonEvent, ServiceDaemon, ServiceInfo, UnregisterStatus};
-use std::collections::HashMap;
 
 impl super::DnetMDNSDameon {
     /// Registers a service with the given instance name and hostname.

@@ -1,8 +1,41 @@
 # dnet p2p
 
-dnet p2p is a shared library that add mDNS peer-to-peer connectibility.
+dnet p2p is a shared library that add mDNS peer-to-peer connectibility. It exposes two modes:
 
-## Usage as library from C/C++
+- **Controller**: the leader of the local network, and there can only be one leader.
+- **Worker**: every non-leader is expected to be a worker, connected via the LAN to serve their compute power to the controller.
+
+Each worker runs on a random OS-assigned port, and published their information via mDNS. The controller will then browse mDNS services actively and keep a record of the workers in the network. There are several threads:
+
+- **Service**: Binds to a TCP socket at a random port.
+- **Worker mDNS Daemon**: Workers run a daemon to connect with mDNS, they periodically publish their info to their mDNS service properties.
+- **Controller mDNS Daemon**: Workers
+
+## Usage
+
+### Worker
+
+Start the daemon as a worker, which simply registers its own device information on mDNS and actively listens on a port:
+
+```sh
+cargo run worker
+```
+
+### Controller
+
+Start the controller, which browses the mDNS services to detect other workers and send them a message.
+
+```sh
+cargo run controller [message]
+```
+
+You can select the type of message with the last argument:
+
+- if omitted, will simply `ping` the workers
+- `matmul` will send a distributed matrix multiplication task, respecting device specs while giving the portion of matrix to them.
+- TODO: ...
+
+### FFI from C/C++
 
 Include the shared library within your loader step, e.g. `-L some/directory -ldnet`. Then, include [`dnet.h`](./example/src/dnet.h) in your code.
 
@@ -15,19 +48,13 @@ See the [header file](./example/src/dnet.h) for more specific instructions.
 > [!TIP]
 > Debug build of the library include diagnostic prints to `stderr`; in release build _nothing_ is printed.
 
-## Usage as CLI
-
-Simply run the daemon with:
-
-```sh
-cargo run
-```
-
-TODO: !!!
-
-## Usage with [dns-sd](https://man.netbsd.org/dns-sd.1)
+### Discovering with [dns-sd](https://man.netbsd.org/dns-sd.1)
 
 When the daemon is running, we can detect the libp2p MDNS service with the [dns-sd](https://manp.gs/mac/1/dns-sd) standard tool (following the definitions in [libp2p-mdns specification](https://github.com/libp2p/specs/blob/master/discovery/mdns.md)).
+
+> [!TIP]
+>
+> You can use other DNS-based service discovery tools like [Avahi](https://avahi.org/) or [Bonjour](https://developer.apple.com/bonjour/) for this as well.
 
 First, we can make a DNS-SD meta-query to see that indeed `_dnet_._tcp` is registered (can be piped to `grep dnet`):
 

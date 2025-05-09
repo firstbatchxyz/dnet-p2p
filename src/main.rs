@@ -4,10 +4,10 @@ use tokio_util::sync::CancellationToken;
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Run the dnet daemon.
-    Start,
-    /// Browse dnet services around.
-    Browse,
+    /// Starts the worker service, actively listening to a controller.
+    Worker,
+    /// Start the controller service, which will monitor the workers.
+    Controller,
 }
 
 #[derive(Parser)]
@@ -34,19 +34,19 @@ async fn main() -> eyre::Result<()> {
         tokio::spawn(async move { wait_for_termination(cancellation_clone).await });
 
     let args = Cli::parse();
-    let mdns = DnetMDNSDameon::new(cancellation.clone());
+    let mut mdns = DnetMDNSDameon::new(cancellation.clone());
     match args.command {
-        Commands::Start => {
-            // TODO: get this from env
-            // TODO: detect if already in use
-            let port = 5678;
+        Commands::Worker => {
+            // create a service that binds to a random port
+            let service = DnetService::new(cancellation).await?;
+            let port = service.get_port()?;
 
-            // spawn a task to listen for incoming connections
-            let service = DnetService::new(port, cancellation.clone());
+            // start listening for incoming connections on a new task
             let handle_for_service = tokio::spawn(async move {
                 service.start().await.unwrap();
             });
 
+            // register the service with mDNS
             let instance_name = "erhan2";
             let hostname = "erhan-mdns"; // FIXME: use gethostname()
             if let Err(e) = mdns.register(instance_name, hostname, port).await {
@@ -58,7 +58,7 @@ async fn main() -> eyre::Result<()> {
                 log::error!("Error while waiting for service: {}", e);
             }
         }
-        Commands::Browse => {
+        Commands::Controller => {
             mdns.browse().await?;
         }
     };
