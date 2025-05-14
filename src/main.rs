@@ -1,9 +1,7 @@
-use std::{env, sync::Arc};
-
 use clap::{Parser, Subcommand};
-use dnet_p2p::{DnetService, ServiceProperties};
+use dnet_p2p::DnetService;
 use gethostname::gethostname;
-use tokio::sync::RwLock;
+use std::env;
 use tokio_util::sync::CancellationToken;
 
 #[derive(Subcommand)]
@@ -18,7 +16,7 @@ enum Commands {
 #[command(version, about)]
 struct Cli {
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[tokio::main]
@@ -31,7 +29,6 @@ async fn main() -> eyre::Result<()> {
         .init();
 
     let cancellation = CancellationToken::new();
-    let properties = Arc::new(RwLock::new(ServiceProperties::default()));
 
     // spawn a task to listen for termination signals
     let cancellation_clone = cancellation.clone();
@@ -39,38 +36,32 @@ async fn main() -> eyre::Result<()> {
         tokio::spawn(async move { wait_for_termination(cancellation_clone).await });
 
     let args = Cli::parse();
-    let mut mdns = DnetMDNSDameon::new(cancellation.clone(), properties.clone());
-    match args.command {
-        Commands::Worker => {
-            // create a service that binds to a random port
-            let mut service = DnetService::new(cancellation, properties).await?;
-            let port = service.get_port()?;
 
-            // start listening for incoming connections on a new task
-            let handle_for_service = tokio::spawn(async move {
-                service.start().await.unwrap();
-            });
+    // register the service with mDNS
+    let instance_name = env::var("INSTANCE_NAME").unwrap_or("TODO-random".to_string());
+    let hostname = env::var("HOSTNAME").unwrap_or_else(|_| {
+        gethostname()
+            .into_string()
+            .map(|s| format!("{}-dnet", s))
+            .unwrap_or("TODO-random".to_string())
+    });
 
-            // register the service with mDNS
-            let instance_name = env::var("INSTANCE_NAME").unwrap_or("TODO-random".to_string());
-            let hostname = env::var("HOSTNAME").unwrap_or_else(|_| {
-                gethostname()
-                    .into_string()
-                    .unwrap_or("TODO-random".to_string())
-            });
-            if let Err(e) = mdns.register(&instance_name, &hostname, port).await {
-                log::error!("Failed to register mDNS service: {}", e);
-            };
+    // create a service that binds to a random port
+    let mut service = DnetService::new(cancellation, instance_name, hostname, None).await?;
 
-            log::info!("Aborting service...");
-            if let Err(e) = handle_for_service.await {
-                log::error!("Error while waiting for service: {}", e);
-            }
-        }
-        Commands::Manager => {
-            mdns.browse().await?;
-        }
+    let handle_for_service = match args.command.unwrap_or(Commands::Worker) {
+        Commands::Worker => tokio::spawn(async move {
+            service.start().await.unwrap();
+        }),
+        Commands::Manager => tokio::spawn(async move {
+            service.as_manager().start().await.unwrap();
+        }),
     };
+
+    log::info!("Aborting service...");
+    if let Err(e) = handle_for_service.await {
+        log::error!("Error while waiting for service: {}", e);
+    }
 
     if let Err(e) = handle_for_cancellation.await {
         log::error!("Error while waiting for handles: {}", e);
