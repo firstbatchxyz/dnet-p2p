@@ -1,32 +1,42 @@
 # dnet p2p
 
-dnet p2p is a shared library that add mDNS peer-to-peer connectibility. It exposes two modes:
+dnet p2p is a shared library that add mDNS peer-to-peer connectibility. It exposes two modes (inspired from MPI terms):
 
-- **Controller**: the leader of the local network, and there can only be one leader.
-- **Worker**: every non-leader is expected to be a worker, connected via the LAN to serve their compute power to the controller.
+- **Manager**: the leader of the local network, and there can only be one leader.
+- **Worker**: every non-manager is expected to be a worker, connected via the LAN to serve their compute power to the manager.
 
-Each worker runs on a random OS-assigned port, and published their information via mDNS. The controller will then browse mDNS services actively and keep a record of the workers in the network. There are several threads:
+Each worker runs on a random OS-assigned port, and published their information via mDNS. The manager will then browse mDNS services actively and keep a record of the workers in the network. There are several threads:
 
 - **Service**: Binds to a TCP socket at a random port.
 - **Worker mDNS Daemon**: Workers run a daemon to connect with mDNS, they periodically publish their info to their mDNS service properties.
-- **Controller mDNS Daemon**: Workers
+- **Manager mDNS Daemon**: Worker that wants to issue something becomes a "manager", also denoted by its TXT property.
+
+TODO: check [tokio-serial](https://github.com/berkowski/tokio-serial) for Serial port communication
+
+## Installation
+
+Install from the source via:
+
+```sh
+
+```
 
 ## Usage
 
 ### Worker
 
-Start the daemon as a worker, which simply registers its own device information on mDNS and actively listens on a port:
+The default mode is to run as a worker.
 
 ```sh
-cargo run worker
+cargo run
 ```
 
-### Controller
+### Manager
 
-Start the controller, which browses the mDNS services to detect other workers and send them a message.
+To run as a manager, we need to give a task. You can imagine that the C/C++ calls the shared library in a similar fashion.
 
 ```sh
-cargo run controller [message]
+cargo run <message>
 ```
 
 You can select the type of message with the last argument:
@@ -44,9 +54,6 @@ Include the shared library within your loader step, e.g. `-L some/directory -ldn
 - You can publish a data to all peers with `dnet_publish`, or receive a data for your peer with `dnet_receive`.
 
 See the [header file](./example/src/dnet.h) for more specific instructions.
-
-> [!TIP]
-> Debug build of the library include diagnostic prints to `stderr`; in release build _nothing_ is printed.
 
 ### Discovering with [dns-sd](https://man.netbsd.org/dns-sd.1)
 

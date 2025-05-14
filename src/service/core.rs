@@ -1,23 +1,51 @@
 use eyre::Context;
-use tokio::{
-    io::AsyncWriteExt,
-    net::{TcpListener, TcpStream},
-};
+use mdns_sd::ServiceDaemon;
+use std::{collections::HashMap, net::SocketAddr};
+use tokio::net::{TcpListener, TcpStream};
 use tokio_util::sync::CancellationToken;
+
+use super::ServiceProperties;
 
 /// Listen on all interfaces on a random port.
 const LISTEN_ADDR: &str = "0.0.0.0:0";
 
+/// A `dnet` service.
+///
+/// Each service has a TCP listener, and a local pool of peers that they are connected to.
 pub struct DnetService {
-    cancellation: CancellationToken,
-    listener: TcpListener,
+    /// The cancellation token to cancel the service gracefully.
+    ///
+    /// Usually listens to CTRL+C, or any other graceful shutdown on errors.
+    pub(crate) cancellation: CancellationToken,
+    /// An active TCP listener that accepts incoming connections.
+    pub(crate) listener: TcpListener,
+    /// A mapping of services from their `fullname` to their established connections.
+    pub(crate) peer_conns: HashMap<String, TcpStream>,
+    /// A mapping of services from their `fullname` to their last-seen properties.
+    pub(crate) peer_props: HashMap<String, ServiceProperties>,
+    /// A system information object to monitor resources.
+    pub(crate) sysinfo: sysinfo::System,
+    /// A shared service properties object.
+    ///
+    /// This is published via mDNS to all other services.
+    pub(crate) properties: ServiceProperties,
+    /// mDNS service daemon.
+    pub(crate) mdns: ServiceDaemon,
 }
 
 impl DnetService {
     pub async fn new(cancellation: CancellationToken) -> eyre::Result<Self> {
         Ok(Self {
             cancellation,
-            listener: TcpListener::bind(LISTEN_ADDR).await?,
+            // TODO: do this elsewhere?
+            listener: TcpListener::bind(LISTEN_ADDR)
+                .await
+                .wrap_err("failed to bind to TCP listener")?,
+            sysinfo: sysinfo::System::new_all(),
+            peer_conns: HashMap::new(),
+            peer_props: HashMap::new(),
+            properties: Default::default(),
+            mdns: ServiceDaemon::new().wrap_err("failed to create mDNS service daemon")?,
         })
     }
 
@@ -29,28 +57,26 @@ impl DnetService {
             .wrap_err("could not get local address")
     }
 
-    pub async fn start(&self) -> eyre::Result<()> {
-        // let client = TcpStream::connect(&addr).await?;
+    pub async fn start(&mut self) -> eyre::Result<()> {
+        // create an interval to refresh properties
+        const PROPERTY_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
+        let mut property_refresh_interval = tokio::time::interval(PROPERTY_REFRESH_INTERVAL);
+        property_refresh_interval.tick().await; // wait for the first tick
 
         loop {
             tokio::select! {
               // handle incoming connections
               accept_result = self.listener.accept() => {
                 match accept_result {
-                  Ok((connection, _)) => {
-                    if let Err(e) = self.handle_connection(connection).await {
-                      log::error!("Failed to handle connection: {e}");
-                    }
+                  Ok((connection, socket)) => {
+                    self.handle_connection(connection, socket).await;
                   }
                   Err(err) => {
                     log::error!("Failed to accept connection: {err}");
                   }
                 }
               }
-
-              // FIXME: client handling logic here
-
-
+              _ = property_refresh_interval.tick() => self.handle_property_refresh().await,
               _ = self.cancellation.cancelled() => break,
             }
         }
@@ -58,47 +84,30 @@ impl DnetService {
         Ok(())
     }
 
-    async fn handle_connection(&self, mut connection: TcpStream) -> eyre::Result<()> {
-        log::info!("Accepted connection from {}", connection.peer_addr()?);
-
-        // read the response
-        connection.readable().await?;
-        let mut buffer = vec![0; 1024];
-        let n = connection.try_read(&mut buffer)?;
-        if n == 0 {
-            log::warn!("Connection closed by peer");
-            return Ok(());
+    /// Stops the service gracefully.
+    async fn stop(&mut self) {
+        // shutdown the mdns daemon
+        while let Err(e) = self.mdns.shutdown() {
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            if let mdns_sd::Error::Again = e {
+                continue;
+            } else {
+                log::error!("Failed to shutdown mDNS daemon: {}", e);
+            }
+            break;
         }
-        let data = &buffer[..n];
-        log::info!("Received data: {:?}", String::from_utf8_lossy(data));
-
-        // send a response back
-        connection.writable().await?;
-        connection.write_all(b"PONG").await?;
-
-        Ok(())
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use tokio::io::AsyncWriteExt;
+    /// Refreshes the system information and updates the properties.
+    #[inline]
+    async fn handle_property_refresh(&mut self) {
+        self.sysinfo.refresh_all();
+        self.properties.refresh_sysinfo(&self.sysinfo);
+    }
 
-    use super::*;
-
-    // cargo test --package dnet-p2p --lib -- service::core::tests::test_send_dummy --exact --show-output
-    #[tokio::test]
-    async fn test_send_dummy() -> eyre::Result<()> {
-        let port = 57421;
-        // let addr = format!("127.0.0.1:{port}");
-        let addr = format!("192.168.1.119:{port}");
-
-        let mut client = TcpStream::connect(&addr).await?;
-
-        // send hello world
-        let msg = b"Hello, world!";
-        client.write_all(msg).await?;
-
-        Ok(())
+    #[inline]
+    async fn handle_connection(&mut self, connection: TcpStream, socket: SocketAddr) {
+        log::info!("Accepted connection from {}", socket);
+        // TODO: exchange peer info here, so that we can record the fullname
     }
 }

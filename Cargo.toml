@@ -10,6 +10,10 @@ crate-type = [
   "rlib",   # allows Rust to use this library
 ]
 
+[features]
+default = ["ffi"]
+ffi = []
+
 [dependencies]
 # cli
 clap = { version = "4.5.32", features = ["derive"] }
@@ -29,3 +33,4 @@ mdns-sd = "0.13.6"
 
 # system info
 sysinfo = "0.33.1"
+gethostname = "1.0.2"

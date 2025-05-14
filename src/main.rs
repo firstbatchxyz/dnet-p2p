@@ -1,13 +1,17 @@
+use std::{env, sync::Arc};
+
 use clap::{Parser, Subcommand};
-use dnet_p2p::{DnetMDNSDameon, DnetService};
+use dnet_p2p::{DnetService, ServiceProperties};
+use gethostname::gethostname;
+use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
 #[derive(Subcommand)]
-pub enum Commands {
-    /// Starts the worker service, actively listening to a controller.
+enum Commands {
+    /// Starts the worker service, actively listening to a manager.
     Worker,
-    /// Start the controller service, which will monitor the workers.
-    Controller,
+    /// Start the manager service, which will monitor the workers.
+    Manager,
 }
 
 #[derive(Parser)]
@@ -27,6 +31,7 @@ async fn main() -> eyre::Result<()> {
         .init();
 
     let cancellation = CancellationToken::new();
+    let properties = Arc::new(RwLock::new(ServiceProperties::default()));
 
     // spawn a task to listen for termination signals
     let cancellation_clone = cancellation.clone();
@@ -34,11 +39,11 @@ async fn main() -> eyre::Result<()> {
         tokio::spawn(async move { wait_for_termination(cancellation_clone).await });
 
     let args = Cli::parse();
-    let mut mdns = DnetMDNSDameon::new(cancellation.clone());
+    let mut mdns = DnetMDNSDameon::new(cancellation.clone(), properties.clone());
     match args.command {
         Commands::Worker => {
             // create a service that binds to a random port
-            let service = DnetService::new(cancellation).await?;
+            let mut service = DnetService::new(cancellation, properties).await?;
             let port = service.get_port()?;
 
             // start listening for incoming connections on a new task
@@ -47,18 +52,22 @@ async fn main() -> eyre::Result<()> {
             });
 
             // register the service with mDNS
-            let instance_name = "erhan2";
-            let hostname = "erhan-mdns"; // FIXME: use gethostname()
-            if let Err(e) = mdns.register(instance_name, hostname, port).await {
+            let instance_name = env::var("INSTANCE_NAME").unwrap_or("TODO-random".to_string());
+            let hostname = env::var("HOSTNAME").unwrap_or_else(|_| {
+                gethostname()
+                    .into_string()
+                    .unwrap_or("TODO-random".to_string())
+            });
+            if let Err(e) = mdns.register(&instance_name, &hostname, port).await {
                 log::error!("Failed to register mDNS service: {}", e);
             };
-            // handle_for_service.await??; // FIXME: ugly
+
             log::info!("Aborting service...");
             if let Err(e) = handle_for_service.await {
                 log::error!("Error while waiting for service: {}", e);
             }
         }
-        Commands::Controller => {
+        Commands::Manager => {
             mdns.browse().await?;
         }
     };
