@@ -2,7 +2,7 @@
 
 dnet p2p is a shared library that add mDNS peer-to-peer connectibility. It exposes two modes (inspired from MPI terms):
 
-- **Manager**: the leader of the local network, and there can only be one leader.
+- **Manager**: the manager of the local network, is able to dispatch tasks to all other. There can only be one manager.
 - **Worker**: every non-manager is expected to be a worker, connected via the LAN to serve their compute power to the manager.
 
 Each worker runs on a random OS-assigned port, and published their information via mDNS. The manager will then browse mDNS services actively and keep a record of the workers in the network. There are several threads:

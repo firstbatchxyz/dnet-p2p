@@ -8,61 +8,76 @@ use std::collections::HashMap;
 ///
 /// Also implements [`From<TxtProperties>`] so that these properties can be
 /// repopulated from mDNS `TXT` records.
-#[derive(Default, Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct ServiceProperties {
     /// Amount of available memory in RAM, in bytes.
     ///
     /// On top of `free_memory`, this is the amount of memory that can be re-used as well.
-    available_memory: u64,
+    pub available_memory: u64,
     /// Amount of free memory in RAM, in bytes.
     ///
     /// In Windows / FreeBSD this is the same as `available_memory`.
-    free_memory: u64,
+    pub free_memory: u64,
     /// Total amount of memory in RAM, in bytes.
-    total_memory: u64,
-    /// Whether this service is a leader or not.
+    pub total_memory: u64,
+    /// Whether this service is a manager or not.
     ///
-    /// We only expect there to be a single leader in the local network.
-    is_leader: bool,
+    /// We only expect there to be a single manager in the local network.
+    pub is_manager: bool,
     /// Whether this service is currently doing a task or not.
-    is_busy: bool,
+    pub is_busy: bool,
 }
 
 impl ServiceProperties {
+    pub fn new(sysinfo: &sysinfo::System, is_manager: bool) -> Self {
+        let mut props = Self {
+            // these will be refreshed just below
+            available_memory: 0,
+            free_memory: 0,
+            total_memory: 0,
+            // cant be busy at the start
+            is_busy: false,
+            is_manager,
+        };
+
+        props.refresh_sysinfo(sysinfo);
+
+        props
+    }
+
     /// Repopulates the properties with the given [`sysinfo::System`] instance.
     pub fn refresh_sysinfo(&mut self, sysinfo: &sysinfo::System) {
         self.available_memory = sysinfo.available_memory();
         self.free_memory = sysinfo.free_memory();
         self.total_memory = sysinfo.total_memory();
     }
-
-    /// Sets `is_leader` to `true`.
-    ///
-    /// This should only be done when the service is attempted to be running
-    /// as a leader / coordinator. It must be the case that all other workers
-    /// within the local network are not leaders, and this is the only one.
-    ///
-    /// If there is a collision, the service will close itself in favor of the
-    /// other existing leader.
-    pub fn become_leader(&mut self) {
-        self.is_leader = true;
-    }
 }
 
-impl From<TxtProperties> for ServiceProperties {
-    fn from(txt_properties: TxtProperties) -> Self {
-        let mut props = Self::default();
-        for (key, value) in txt_properties.into_property_map_str() {
-            match key.as_str() {
-                "mem_avail" => props.available_memory = value.parse().unwrap_or_default(),
-                "mem_free" => props.free_memory = value.parse().unwrap_or_default(),
-                "mem_total" => props.total_memory = value.parse().unwrap_or_default(),
-                "is_leader" => props.is_leader = value.parse().unwrap_or_default(),
-                "is_busy" => props.is_busy = value.parse().unwrap_or_default(),
-                _ => {}
-            }
+impl From<&TxtProperties> for ServiceProperties {
+    fn from(props: &TxtProperties) -> Self {
+        log::debug!("Parsing properties from mDNS TXT record: {props:?}");
+        Self {
+            available_memory: props
+                .get_property_val_str("mem_avail")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or_default(),
+            free_memory: props
+                .get_property_val_str("mem_free")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or_default(),
+            total_memory: props
+                .get_property_val_str("mem_total")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or_default(),
+            is_manager: props
+                .get_property_val_str("is_manager")
+                .map(|s| s == "1")
+                .unwrap_or(false),
+            is_busy: props
+                .get_property_val_str("is_busy")
+                .map(|s| s == "1")
+                .unwrap_or(false),
         }
-        props
     }
 }
 
@@ -73,7 +88,7 @@ impl IntoTxtProperties for &ServiceProperties {
                 ("mem_avail", self.available_memory),
                 ("mem_free", self.free_memory),
                 ("mem_total", self.total_memory),
-                ("is_leader", self.is_leader.into()),
+                ("is_manager", self.is_manager.into()),
                 ("is_busy", self.is_busy.into()),
             ]
             .map(|(k, v)| (k.to_string(), v.to_string())),

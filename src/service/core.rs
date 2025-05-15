@@ -1,6 +1,10 @@
 use eyre::Context;
-use mdns_sd::{DaemonEvent, ServiceDaemon, ServiceEvent, ServiceInfo, UnregisterStatus};
-use std::{collections::HashMap, net::SocketAddr};
+use mdns_sd::{DaemonEvent, ServiceDaemon, ServiceEvent, UnregisterStatus};
+use std::{
+    collections::HashMap,
+    net::{SocketAddr, SocketAddrV4},
+    str::FromStr,
+};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_util::sync::CancellationToken;
 
@@ -18,11 +22,8 @@ pub struct DnetService {
     pub(crate) listener: TcpListener,
     /// Actively listening port.
     pub(crate) port: u16,
-    /// A mapping of services from their `fullname` to their established connections.
-    /// TODO: do we need this?
-    // pub(crate) peer_conns: HashMap<String, TcpStream>,
     /// A mapping of services from their `fullname` to their last-seen properties.
-    pub(crate) peer_props: HashMap<String, ServiceProperties>,
+    pub(crate) peer_props: HashMap<String, (ServiceProperties, SocketAddrV4)>,
     /// A system information object to monitor resources.
     pub(crate) sysinfo: sysinfo::System,
     /// A shared service properties object.
@@ -36,7 +37,7 @@ pub struct DnetService {
     pub(crate) hostname: String,
     /// The full name of the service.
     pub(crate) fullname: String,
-    /// Indicates that this service is a manager.
+    /// Whether this service is a manager or not.
     pub(crate) is_manager: bool,
 }
 
@@ -46,9 +47,17 @@ impl DnetService {
         instance_name: String,
         hostname: String,
         port: Option<u16>,
+        is_manager: bool,
     ) -> eyre::Result<Self> {
+        let sysinfo = sysinfo::System::new_all();
+
         // listen at the given port, or a random one
-        let listen_addr = format!("0.0.0.0:{}", port.unwrap_or(0));
+        let listen_addr = SocketAddr::V4(SocketAddrV4::from_str(&format!(
+            "0.0.0.0:{}",
+            port.unwrap_or(0)
+        ))?);
+
+        let properties = ServiceProperties::new(&sysinfo, is_manager);
         let listener = TcpListener::bind(listen_addr)
             .await
             .wrap_err("failed to bind to TCP listener")?;
@@ -65,24 +74,16 @@ impl DnetService {
             cancellation,
             listener,
             port,
-            sysinfo: sysinfo::System::new_all(),
-            // peer_conns: HashMap::new(),
+            sysinfo,
             peer_props: HashMap::new(),
-            properties: Default::default(),
+            properties,
             mdns: ServiceDaemon::new().wrap_err("failed to create mDNS service daemon")?,
             instance_name,
             hostname,
-            fullname: String::new(), // TODO: !!!
-            is_manager: false,
+            fullname: String::new(),
+            is_manager,
         })
     }
-
-    #[inline(always)]
-    pub fn as_manager(mut self) -> Self {
-        self.is_manager = true;
-        self
-    }
-
     /// Starts the service as a worker and listens for incoming connections.
     pub async fn start(&mut self) -> eyre::Result<()> {
         // create an interval to refresh properties
@@ -92,83 +93,49 @@ impl DnetService {
 
         self.fullname = self.register().await?;
 
-        // FIXME: this is very smelly, dont interleave two types like this
+        // browse for services
+        let browser = self
+            .mdns
+            .browse(Self::MDNS_SERVICE_TYPE)
+            .wrap_err("failed to browse services")?;
 
         // monitor the daemon for events
-        // FIXME: this does not work
-        let monitor = if !self.is_manager {
-            Some(self.mdns.monitor().wrap_err("could not monitor mdns")?)
-        } else {
-            None
-        };
-        // if we are a manager, we need to browse for services
-        // FIXME: this does not work
-        let browser = if self.is_manager {
-            Some(
-                self.mdns
-                    .browse(Self::MDNS_SERVICE_TYPE)
-                    .wrap_err("failed to browse")?,
-            )
-        } else {
-            None
-        };
+        let monitor = self.mdns.monitor().wrap_err("could not monitor mdns")?;
 
         loop {
-            let is_manager = self.is_manager;
             tokio::select! {
-                // handle incoming connections
-                accept_result = self.listener.accept() => {
-                match accept_result {
-                  Ok((connection, socket)) => {
-                    self.handle_connection(connection, socket).await;
+              // handle incoming connections
+              accept_result = self.listener.accept() => {
+                  match accept_result {
+                      Ok((connection, socket)) => self.handle_connection(connection, socket).await,
+                      Err(err) => log::error!("Failed to accept connection: {err}"),
                   }
-                  Err(err) => {
-                    log::error!("Failed to accept connection: {err}");
-                  }
-                }
               }
+
               // handle property refresh
               _ = property_refresh_interval.tick() => {
                   if let Err(e) = self.handle_property_refresh().await {
                       log::error!("Failed to refresh properties: {e}");
                   }
               },
-              // monitor mDNS events if we are not a manager
-              // FIXME: this does not work
-              event_res = monitor.as_ref().unwrap().recv_async(), if !is_manager => {
+
+              // monitor browse events
+              event_res = browser.recv_async() => {
                   match event_res {
-                      Ok(event) => {
-                          self.handle_worker_monitor(event).await;
-                      },
-                      Err(e) => {
-                          log::error!("Error receiving event: {:?}", e);
-                          break;
-                      }
+                      Ok(event) => self.handle_browse_event(event),
+                      Err(err) => log::error!("Error receiving event: {err}"),
+                  };
+              },
+
+              // monitor mDNS events if we are not a manager
+              event_res = monitor.recv_async() => {
+                  match event_res {
+                      Ok(event) => self.handle_monitor_event(event).await,
+                      Err(err) => log::error!("Error receiving event: {err}"),
                 };
               },
-              // monitor browse events if we are a manager
-              // FIXME: this does not work
-               event_res = browser.as_ref().unwrap().recv_async(), if is_manager => {
-                    match event_res {
-                        Ok(event) => {
-                            match event {
-                                ServiceEvent::ServiceResolved(info) => {
-                                    self.handle_service_resolved(info);
-                                },
-                                ServiceEvent::ServiceRemoved(service_name, fullname) => {
-                                    if service_name.ends_with(Self::MDNS_SERVICE_TYPE) {
-                                      log::warn!("Service {service_name} removed: {fullname}");
-                                      self.peer_props.remove(fullname.as_str());
-                                      // self.peer_conns.remove(fullname.as_str());
-                                    }
-                                },
-                                event => log::trace!("{event:?}"),
-                            }
-                        },
-                        Err(err) => log::error!("Error receiving event: {err}"),
-                    };
-              }
-              // handle cancellation
+
+              // graceful shutdown
               _ = self.cancellation.cancelled() => break,
             }
         }
@@ -179,7 +146,7 @@ impl DnetService {
 
     /// Handles monitored mDNS events.
     #[inline]
-    async fn handle_worker_monitor(&self, event: DaemonEvent) {
+    async fn handle_monitor_event(&self, event: DaemonEvent) {
         match event {
             DaemonEvent::Announce(service, interface) => {
                 log::debug!("Service {service} announced at {interface}");
@@ -192,23 +159,74 @@ impl DnetService {
             }
         };
     }
-    /// Stops the service gracefully.
-    async fn stop(&mut self) {
-        let receiver = self.mdns.unregister(&self.fullname).unwrap(); // TODO: !!!
-        while let Ok(status) = receiver.recv() {
-            match status {
-                UnregisterStatus::OK => {
-                    log::warn!("Service {} unregistered", self.fullname);
-                }
-                UnregisterStatus::NotFound => {
-                    log::warn!("Service {} not found!", self.fullname);
+
+    #[inline]
+    fn handle_browse_event(&mut self, event: ServiceEvent) {
+        match event {
+            ServiceEvent::ServiceResolved(info) => {
+                if info.get_fullname().ends_with(Self::MDNS_SERVICE_TYPE) {
+                    if let Some(addr) = info
+                        .get_addresses_v4()
+                        .iter()
+                        // get the first address that is private (belongs to the local network)
+                        .filter(|addr| addr.is_private())
+                        .next()
+                    {
+                        log::info!(
+                            "{} resolved at host {} listening on {addr}",
+                            info.get_fullname(),
+                            info.get_hostname(),
+                        );
+
+                        let addr = SocketAddrV4::from_str(&format!("{}:{}", addr, info.get_port()))
+                            .expect("should parse ipv4 address");
+                        let properties = ServiceProperties::from(info.get_properties());
+                        log::debug!("{properties:#?}");
+
+                        // check if we are both a manager
+                        if self.is_manager && properties.is_manager {
+                            log::error!(
+                                "Found another manager {} at {addr}, ignoring...",
+                                info.get_fullname()
+                            );
+                        } else {
+                            self.peer_props
+                                .insert(info.get_fullname().to_string(), (properties, addr));
+                        }
+                    }
+                } else {
+                    log::trace!("Ignoring service {}", info.get_fullname());
                 }
             }
+            ServiceEvent::ServiceRemoved(service_name, fullname) => {
+                if service_name.ends_with(Self::MDNS_SERVICE_TYPE) {
+                    log::warn!("Service {service_name} removed: {fullname}");
+                    self.peer_props.remove(fullname.as_str());
+                }
+            }
+            event => log::trace!("{event:?}"),
         }
+    }
 
-        // we would be browsing only if we are a manager
-        if self.is_manager {
-            self.mdns.stop_browse(Self::MDNS_SERVICE_TYPE).unwrap(); // TODO: !!!
+    /// Stops the service gracefully.
+    async fn stop(&mut self) {
+        // unregister the service
+        match self.mdns.unregister(&self.fullname) {
+            Ok(receiver) => {
+                while let Ok(status) = receiver.recv() {
+                    match status {
+                        UnregisterStatus::OK => {
+                            log::warn!("Service {} unregistered", self.fullname);
+                        }
+                        UnregisterStatus::NotFound => {
+                            log::warn!("Service {} not found!", self.fullname);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to unregister service {}: {}", self.fullname, e);
+            }
         }
 
         // shutdown the mdns daemon
@@ -228,41 +246,15 @@ impl DnetService {
     async fn handle_property_refresh(&mut self) -> eyre::Result<()> {
         self.sysinfo.refresh_all();
         self.properties.refresh_sysinfo(&self.sysinfo);
-        self.register().await?;
+
+        // TODO: how to update the properties?
+        // or should we use the TCP connections for that
+        // self.register().await?;
         Ok(())
     }
 
-    fn handle_service_resolved(&mut self, info: ServiceInfo) {
-        if info.get_fullname().ends_with(Self::MDNS_SERVICE_TYPE) {
-            if let Some(addr) = info
-                .get_addresses_v4()
-                .iter()
-                // get the first address that is private (belongs to the local network)
-                .filter(|addr| addr.is_private())
-                .next()
-            {
-                let addr_port = format!("{}:{}", addr, info.get_port());
-                log::info!(
-                    "{} resolved at host {} listening on {addr_port}",
-                    info.get_fullname(),
-                    info.get_hostname(),
-                );
-
-                let properties = ServiceProperties::from(info.get_properties().clone());
-
-                // record service
-                self.peer_props
-                    .insert(info.get_fullname().to_string(), properties);
-
-                //
-            }
-        } else {
-            log::trace!("Ignoring service {}", info.get_fullname());
-        }
-    }
-
     #[inline]
-    async fn handle_connection(&mut self, connection: TcpStream, socket: SocketAddr) {
+    async fn handle_connection(&mut self, _connection: TcpStream, socket: SocketAddr) {
         log::info!("Accepted connection from {}", socket);
         // TODO: exchange peer info here, so that we can record the fullname
     }

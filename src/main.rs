@@ -1,22 +1,26 @@
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use dnet_p2p::DnetService;
 use gethostname::gethostname;
-use std::env;
 use tokio_util::sync::CancellationToken;
-
-#[derive(Subcommand)]
-enum Commands {
-    /// Starts the worker service, actively listening to a manager.
-    Worker,
-    /// Start the manager service, which will monitor the workers.
-    Manager,
-}
 
 #[derive(Parser)]
 #[command(version, about)]
 struct Cli {
-    #[command(subcommand)]
-    command: Option<Commands>,
+    /// Run as manager instead of worker
+    #[arg(short = 'm', long = "manager", default_value_t = false)]
+    is_manager: bool,
+
+    /// Instance name for the service.
+    #[arg(short = 'i', long = "instance")]
+    instance_name: String,
+
+    /// Hostname for the service, leave empty for machine hostname.
+    #[arg(long = "host")]
+    hostname: Option<String>,
+
+    /// Port number to bind to, leave empty for random port.
+    #[arg(short = 'p', long = "port")]
+    port: Option<u16>,
 }
 
 #[tokio::main]
@@ -38,31 +42,24 @@ async fn main() -> eyre::Result<()> {
     let args = Cli::parse();
 
     // register the service with mDNS
-    let instance_name = env::var("INSTANCE_NAME").unwrap_or("TODO-random".to_string());
-    let hostname = env::var("HOSTNAME").unwrap_or_else(|_| {
+    let instance_name = args.instance_name;
+    let hostname = args.hostname.unwrap_or_else(|| {
         gethostname()
             .into_string()
             .map(|s| format!("{}-dnet", s))
-            .unwrap_or("TODO-random".to_string())
+            .expect("please provie a hostname")
     });
 
-    // create a service that binds to a random port
-    let mut service = DnetService::new(cancellation, instance_name, hostname, None).await?;
-
-    let handle_for_service = match args.command.unwrap_or(Commands::Worker) {
-        Commands::Worker => tokio::spawn(async move {
-            service.start().await.unwrap();
-        }),
-        Commands::Manager => tokio::spawn(async move {
-            service.as_manager().start().await.unwrap();
-        }),
-    };
+    let mut service =
+        DnetService::new(cancellation, instance_name, hostname, None, args.is_manager).await?;
+    let handle_for_service = tokio::spawn(async move {
+        service.start().await.unwrap();
+    });
 
     log::info!("Aborting service...");
     if let Err(e) = handle_for_service.await {
         log::error!("Error while waiting for service: {}", e);
     }
-
     if let Err(e) = handle_for_cancellation.await {
         log::error!("Error while waiting for handles: {}", e);
     }
