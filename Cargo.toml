@@ -10,10 +10,6 @@ crate-type = [
   "rlib",   # allows Rust to use this library
 ]
 
-[features]
-default = ["ffi"]
-ffi = []
-
 [dependencies]
 # cli
 clap = { version = "4.5.32", features = ["derive"] }

@@ -17,10 +17,6 @@ struct Cli {
     /// Hostname for the service, leave empty for machine hostname.
     #[arg(long = "host")]
     hostname: Option<String>,
-
-    /// Port number to bind to, leave empty for random port.
-    #[arg(short = 'p', long = "port")]
-    port: Option<u16>,
 }
 
 #[tokio::main]
@@ -47,21 +43,18 @@ async fn main() -> eyre::Result<()> {
         gethostname()
             .into_string()
             .map(|s| format!("{}-dnet", s))
-            .expect("please provie a hostname")
+            .expect("hostname not provided")
     });
 
-    let mut service =
-        DnetService::new(cancellation, instance_name, hostname, None, args.is_manager).await?;
-    let handle_for_service = tokio::spawn(async move {
-        service.start().await.unwrap();
-    });
+    let mut service = DnetService::new(cancellation, instance_name, hostname, args.is_manager)?;
+    let handle_for_service = tokio::spawn(async move { service.start().await });
 
     log::info!("Aborting service...");
-    if let Err(e) = handle_for_service.await {
-        log::error!("Error while waiting for service: {}", e);
+    if let Err(err) = handle_for_service.await {
+        log::error!("Error while waiting for service: {err}");
     }
-    if let Err(e) = handle_for_cancellation.await {
-        log::error!("Error while waiting for handles: {}", e);
+    if let Err(err) = handle_for_cancellation.await {
+        log::error!("Error while waiting for handles: {err}");
     }
 
     log::info!("Bye!\n");

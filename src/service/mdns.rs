@@ -1,22 +1,23 @@
-use mdns_sd::ServiceInfo;
+use mdns_sd::{ServiceInfo, UnregisterStatus};
+use std::time::Duration;
 
 impl crate::DnetService {
     /// The service type for `dnet` within mDNS.
     ///
-    /// Can be used to browse for `dnet` services, e.g. in MacOS:
+    /// Can be used to browse for `dnet_p2p` services, e.g. in MacOS:
     ///
     /// ```sh
-    /// dns-sd -B _dnet._tcp.
+    /// dns-sd -B _dnet_p2p._tcp.
     /// ```
     ///
     /// or alternatively:
     ///
     /// ```sh
-    /// dns-sd -Q _dnet._tcp.local. PTR
+    /// dns-sd -Q _dnet_p2p._tcp.local. PTR
     /// ```
     ///
     /// Note that a service type always ends with either `._tcp.local.` or `._udp.local.` in mDNS.
-    pub const MDNS_SERVICE_TYPE: &'static str = "_dnet._tcp.local.";
+    pub const MDNS_SERVICE_TYPE: &'static str = "_dnet_p2p._tcp.local.";
 
     /// Registers a service with the given instance name and hostname.
     ///
@@ -26,7 +27,7 @@ impl crate::DnetService {
     ///
     /// FIXME: if the same `instance_name` exists, it will be renamed (e.g. `foo` becomes `foo (2)`, `foo (3)` and so on)
     /// so we need to know that and unregister with the correct name.
-    pub async fn register(&self) -> eyre::Result<String> {
+    pub(super) async fn mdns_register(&self) -> eyre::Result<String> {
         // register your own hostname
         log::debug!(
             "Registering {} of host {}",
@@ -38,14 +39,17 @@ impl crate::DnetService {
             &self.instance_name,
             &format!("{}.local.", self.hostname),
             "", // thanks to `enable_addr_auto` we can give this as empty string
-            self.port,
+            0,  // a dummy port, we will use TXT RECORDs instead
             &self.properties,
         )
         .expect("valid service info")
         // automatically update the addresses of this service, when IP address(es) are added or removed on the host
         .enable_addr_auto();
 
+        // get fullname before consuming the service_info
         let service_fullname = service_info.get_fullname().to_string();
+
+        // register the service with mDNS
         self.mdns
             .register(service_info)
             .expect("Failed to register mDNS service");
@@ -53,5 +57,49 @@ impl crate::DnetService {
         log::info!("Registered service {service_fullname}",);
 
         Ok(service_fullname)
+    }
+
+    /// Unregisters the service from mDNS.
+    pub(super) async fn mdns_unregister(&mut self) {
+        log::debug!("Unregistering service {}", self.fullname);
+
+        // unregister the service
+        match self.mdns.unregister(&self.fullname) {
+            Ok(receiver) => {
+                while let Ok(status) = receiver.recv() {
+                    match status {
+                        UnregisterStatus::OK => {
+                            log::warn!("Service {} unregistered", self.fullname);
+                        }
+                        UnregisterStatus::NotFound => {
+                            log::error!("Service {} was not registered!", self.fullname);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to unregister service {}: {}", self.fullname, e);
+            }
+        }
+    }
+
+    /// Shutdown the mDNS daemon gracefully.
+    pub(super) async fn mdns_shutdown(&self) {
+        const RETRY_SLEEP: Duration = Duration::from_millis(200);
+
+        while let Err(e) = self.mdns.shutdown() {
+            tokio::time::sleep(RETRY_SLEEP).await;
+            if let mdns_sd::Error::Again = e {
+                continue;
+            } else {
+                log::error!("Failed to shutdown mDNS daemon: {}", e);
+            }
+            break;
+        }
+    }
+
+    /// Updates the service properties for the registered service.``
+    pub(super) fn mdns_update_service(&self) {
+        // FIXME: mdns-sd says to just register here again
     }
 }

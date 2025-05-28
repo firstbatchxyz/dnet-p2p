@@ -1,14 +1,9 @@
 use eyre::Context;
-use mdns_sd::{DaemonEvent, ServiceDaemon, ServiceEvent, UnregisterStatus};
-use std::{
-    collections::HashMap,
-    net::{SocketAddr, SocketAddrV4},
-    str::FromStr,
-};
-use tokio::net::{TcpListener, TcpStream};
+use mdns_sd::{DaemonEvent, ServiceDaemon, ServiceEvent};
+use std::collections::HashMap;
 use tokio_util::sync::CancellationToken;
 
-use super::ServiceProperties;
+use super::DnetServiceProperties;
 
 /// A `dnet` service.
 ///
@@ -18,22 +13,25 @@ pub struct DnetService {
     ///
     /// Usually listens to CTRL+C, or any other graceful shutdown on errors.
     pub(crate) cancellation: CancellationToken,
-    /// An active TCP listener that accepts incoming connections.
-    pub(crate) listener: TcpListener,
-    /// Actively listening port.
-    pub(crate) port: u16,
     /// A mapping of services from their `fullname` to their last-seen properties.
-    pub(crate) peer_props: HashMap<String, (ServiceProperties, SocketAddrV4)>,
+    pub(crate) peer_props: HashMap<String, DnetServiceProperties>,
     /// A system information object to monitor resources.
     pub(crate) sysinfo: sysinfo::System,
     /// A shared service properties object.
     ///
     /// This is published via mDNS to all other services.
-    pub(crate) properties: ServiceProperties,
+    pub(crate) properties: DnetServiceProperties,
     /// mDNS service daemon.
     pub(crate) mdns: ServiceDaemon,
-
+    /// The instance name of this service.
+    ///
+    /// If multiple instances exist, the new one will have a number appended to it,
+    /// e.g. `foobar`, `foobar (2)`, etc.
     pub(crate) instance_name: String,
+    /// Name of the host this service is running on.
+    ///
+    /// Usually retrieved from `gethostname` syscall,
+    /// or provided manually.
     pub(crate) hostname: String,
     /// The full name of the service.
     pub(crate) fullname: String,
@@ -42,38 +40,17 @@ pub struct DnetService {
 }
 
 impl DnetService {
-    pub async fn new(
+    pub fn new(
         cancellation: CancellationToken,
         instance_name: String,
         hostname: String,
-        port: Option<u16>,
         is_manager: bool,
     ) -> eyre::Result<Self> {
         let sysinfo = sysinfo::System::new_all();
-
-        // listen at the given port, or a random one
-        let listen_addr = SocketAddr::V4(SocketAddrV4::from_str(&format!(
-            "0.0.0.0:{}",
-            port.unwrap_or(0)
-        ))?);
-
-        let properties = ServiceProperties::new(&sysinfo, is_manager);
-        let listener = TcpListener::bind(listen_addr)
-            .await
-            .wrap_err("failed to bind to TCP listener")?;
-
-        // if the port is not given, get the local address and extract the ports
-        let port = port.unwrap_or_else(|| {
-            listener
-                .local_addr()
-                .map(|a| a.port())
-                .expect("could not get local address")
-        });
+        let properties = DnetServiceProperties::new(&sysinfo, is_manager);
 
         Ok(Self {
             cancellation,
-            listener,
-            port,
             sysinfo,
             peer_props: HashMap::new(),
             properties,
@@ -84,14 +61,14 @@ impl DnetService {
             is_manager,
         })
     }
-    /// Starts the service as a worker and listens for incoming connections.
+    /// Starts the service with mDNS daemon.
     pub async fn start(&mut self) -> eyre::Result<()> {
         // create an interval to refresh properties
         const PROPERTY_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
         let mut property_refresh_interval = tokio::time::interval(PROPERTY_REFRESH_INTERVAL);
         property_refresh_interval.tick().await; // wait for the first tick
 
-        self.fullname = self.register().await?;
+        self.fullname = self.mdns_register().await?;
 
         // browse for services
         let browser = self
@@ -104,14 +81,6 @@ impl DnetService {
 
         loop {
             tokio::select! {
-              // handle incoming connections
-              accept_result = self.listener.accept() => {
-                  match accept_result {
-                      Ok((connection, socket)) => self.handle_connection(connection, socket).await,
-                      Err(err) => log::error!("Failed to accept connection: {err}"),
-                  }
-              }
-
               // handle property refresh
               _ = property_refresh_interval.tick() => {
                   if let Err(e) = self.handle_property_refresh().await {
@@ -127,7 +96,7 @@ impl DnetService {
                   };
               },
 
-              // monitor mDNS events if we are not a manager
+              // monitor mDNS events
               event_res = monitor.recv_async() => {
                   match event_res {
                       Ok(event) => self.handle_monitor_event(event).await,
@@ -178,20 +147,19 @@ impl DnetService {
                             info.get_hostname(),
                         );
 
-                        let addr = SocketAddrV4::from_str(&format!("{}:{}", addr, info.get_port()))
-                            .expect("should parse ipv4 address");
-                        let properties = ServiceProperties::from(info.get_properties());
+                        let properties = DnetServiceProperties::from(info.get_properties());
                         log::debug!("{properties:#?}");
 
                         // check if we are both a manager
                         if self.is_manager && properties.is_manager {
                             log::error!(
-                                "Found another manager {} at {addr}, ignoring...",
+                                "Found another manager {}, ignoring...",
                                 info.get_fullname()
                             );
                         } else {
+                            // add peer to the peer properties
                             self.peer_props
-                                .insert(info.get_fullname().to_string(), (properties, addr));
+                                .insert(info.get_fullname().to_string(), properties);
                         }
                     }
                 } else {
@@ -209,36 +177,9 @@ impl DnetService {
     }
 
     /// Stops the service gracefully.
-    async fn stop(&mut self) {
-        // unregister the service
-        match self.mdns.unregister(&self.fullname) {
-            Ok(receiver) => {
-                while let Ok(status) = receiver.recv() {
-                    match status {
-                        UnregisterStatus::OK => {
-                            log::warn!("Service {} unregistered", self.fullname);
-                        }
-                        UnregisterStatus::NotFound => {
-                            log::warn!("Service {} not found!", self.fullname);
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                log::error!("Failed to unregister service {}: {}", self.fullname, e);
-            }
-        }
-
-        // shutdown the mdns daemon
-        while let Err(e) = self.mdns.shutdown() {
-            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-            if let mdns_sd::Error::Again = e {
-                continue;
-            } else {
-                log::error!("Failed to shutdown mDNS daemon: {}", e);
-            }
-            break;
-        }
+    pub async fn stop(&mut self) {
+        self.mdns_unregister().await;
+        self.mdns_shutdown().await;
     }
 
     /// Refreshes the system information and updates the properties.
@@ -247,15 +188,8 @@ impl DnetService {
         self.sysinfo.refresh_all();
         self.properties.refresh_sysinfo(&self.sysinfo);
 
-        // TODO: how to update the properties?
-        // or should we use the TCP connections for that
-        // self.register().await?;
-        Ok(())
-    }
+        self.mdns_update_service();
 
-    #[inline]
-    async fn handle_connection(&mut self, _connection: TcpStream, socket: SocketAddr) {
-        log::info!("Accepted connection from {}", socket);
-        // TODO: exchange peer info here, so that we can record the fullname
+        Ok(())
     }
 }
