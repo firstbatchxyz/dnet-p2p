@@ -31,11 +31,19 @@ Here we describe both running from Rust and from C/C++.
 
 ### Worker
 
-The default mode is to run as a worker.
+The default mode is to run as a worker with a given instance name.
 
 ```sh
-cargo run
+cargo run -i <instance>
 ```
+
+You can register as a manager as well:
+
+```sh
+cargo run -i <instance> -m
+```
+
+Note that there can only be one manager at a time.
 
 ### FFI from C/C++
 

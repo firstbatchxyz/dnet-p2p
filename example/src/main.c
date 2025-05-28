@@ -18,6 +18,11 @@ static void listen_mode(dnet_p2p_t *dnet) {
   }
 }
 
+/// Example main function for a dnet P2P service
+///
+/// Simply starts the dnet P2P service with a given instance name.
+///
+/// Stops the service on SIGINT (Ctrl+C).
 int main(int argc, char *argv[]) {
   // parse args, we only have one command for now though
   if (argc < 2) {
