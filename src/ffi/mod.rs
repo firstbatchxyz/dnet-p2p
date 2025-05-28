@@ -130,7 +130,7 @@ pub extern "C" fn dnet_p2p_stop(
     handle_ptr: *mut JoinHandle<()>,
 ) -> i32 {
     let service = unsafe {
-        assert!(!service_ptr.is_null(), "libp2p_ptr is null");
+        assert!(!service_ptr.is_null(), "service_ptr is null");
         &mut *service_ptr
     };
     let handle = unsafe {

@@ -48,7 +48,7 @@ See the [header file](./example/src/dnet_p2p.h) for more specific instructions.
 
 ### Discovering with [dns-sd](https://man.netbsd.org/dns-sd.1)
 
-When the daemon is running, we can detect the libp2p MDNS service with the [dns-sd](https://manp.gs/mac/1/dns-sd) standard tool (following the definitions in [libp2p-mdns specification](https://github.com/libp2p/specs/blob/master/discovery/mdns.md)).
+When the daemon is running, we can detect the mDNS service with the [dns-sd](https://manp.gs/mac/1/dns-sd) standard tool.
 
 > [!TIP]
 >

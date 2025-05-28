@@ -38,7 +38,8 @@ int main(int argc, char *argv[]) {
   // create dnet instance
   const char *instance_name = argv[1];
 
-  dnet_p2p_t *dnet_p2p = dnet_p2p_new(instance_name, hostname, 0);
+  dnet_p2p_t *dnet_p2p =
+      dnet_p2p_new(instance_name, hostname, 0 /* not manager */);
   if (!dnet_p2p) {
     fprintf(stderr, "Failed to create dnet instance\n");
     return 1;
