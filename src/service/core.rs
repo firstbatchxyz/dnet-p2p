@@ -129,6 +129,9 @@ impl DnetService {
         };
     }
 
+    /// Handles an mDNS service browse event.
+    ///
+    /// If a service for `dnet` is resolved, it will be added to the list of known peers to this service.
     #[inline]
     fn handle_browse_event(&mut self, event: ServiceEvent) {
         match event {
@@ -174,6 +177,11 @@ impl DnetService {
             }
             event => log::trace!("{event:?}"),
         }
+    }
+
+    /// Cancels the token, to gracefully stop the service.
+    pub fn trigger_cancellation(&self) {
+        self.cancellation.cancel();
     }
 
     /// Stops the service gracefully.

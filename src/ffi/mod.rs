@@ -138,12 +138,8 @@ pub extern "C" fn dnet_p2p_stop(
         Box::from_raw(handle_ptr)
     };
 
-    // stop the service gracefully (in an async context)
-    tokio::runtime::Builder::new_current_thread()
-        .enable_io()
-        .build()
-        .unwrap()
-        .block_on(async { service.stop().await });
+    // stop the service gracefully by triggering the cancellation token
+    service.trigger_cancellation();
 
     // handle should be terminated by now as we stopped the service
     match handle.join() {
