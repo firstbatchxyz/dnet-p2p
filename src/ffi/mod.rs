@@ -10,6 +10,9 @@
 //!
 //! Each function in this module is prefixed with `dnet_p2p_` to avoid name clashes.
 //! They also have their declarations within their docstrings.
+
+#![allow(clippy::missing_safety_doc)]
+
 use std::{ffi, thread::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
@@ -71,13 +74,14 @@ pub extern "C" fn dnet_p2p_new(
 ///
 /// Does no action if the pointer is `NULL`.
 ///
+///
 /// ---
 /// C/C++ declaration:
 /// ```c
 /// extern void dnet_p2p_free(dnet_p2p_t* service_ptr);
 /// ```
 #[unsafe(no_mangle)]
-pub extern "C" fn dnet_p2p_free(service_ptr: *mut DnetService) {
+pub unsafe extern "C" fn dnet_p2p_free(service_ptr: *mut DnetService) {
     if service_ptr.is_null() {
         return;
     }
@@ -93,13 +97,14 @@ pub extern "C" fn dnet_p2p_free(service_ptr: *mut DnetService) {
 ///
 /// The returned handle should be passed to [`dnet_p2p_stop`] to stop the daemon gracefully.
 ///
+///
 /// ---
 /// C/C++ declaration:
 /// ```c
 /// extern dnet_p2p_handle_t* dnet_p2p_start(dnet_p2p_t* service_ptr);
 /// ```
 #[unsafe(no_mangle)]
-pub extern "C" fn dnet_p2p_start(service_ptr: *mut DnetService) -> *mut DnetServiceHandle {
+pub unsafe extern "C" fn dnet_p2p_start(service_ptr: *mut DnetService) -> *mut DnetServiceHandle {
     let service = unsafe {
         assert!(!service_ptr.is_null());
         &mut *service_ptr
@@ -119,13 +124,14 @@ pub extern "C" fn dnet_p2p_start(service_ptr: *mut DnetService) -> *mut DnetServ
 /// This first calls [`DnetService::stop`] on the given `service_ptr`, and then waits for the handle to finish.
 /// It is expected to finish due to the internal cancellation token.
 ///
+///
 /// ---
 /// C/C++ declaration:
 /// ```c
 /// extern int dnet_p2p_stop(dnet_p2p_t* service_ptr, dnet_p2p_handle_t* handle_ptr);
 /// ```
 #[unsafe(no_mangle)]
-pub extern "C" fn dnet_p2p_stop(
+pub unsafe extern "C" fn dnet_p2p_stop(
     service_ptr: *mut DnetService,
     handle_ptr: *mut JoinHandle<()>,
 ) -> i32 {

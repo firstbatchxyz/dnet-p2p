@@ -98,8 +98,15 @@ impl crate::DnetService {
         }
     }
 
-    /// Updates the service properties for the registered service.``
-    pub(super) fn mdns_update_service(&self) {
-        // FIXME: mdns-sd says to just register here again
+    /// Updates the service properties for the registered service.
+    ///
+    /// This is done by re-registering the service with the updated properties,
+    /// as noted in [`mdns-sd` documentation](https://docs.rs/mdns-sd/0.13.9/mdns_sd/struct.ServiceDaemon.html#method.register)
+    pub(super) async fn mdns_update_service(&self) {
+        if let Err(e) = self.mdns_register().await {
+            log::error!("Failed to update mDNS service properties: {}", e);
+        } else {
+            log::info!("Updated mDNS service properties for {}", self.fullname);
+        }
     }
 }

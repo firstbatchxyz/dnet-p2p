@@ -141,8 +141,7 @@ impl DnetService {
                         .get_addresses_v4()
                         .iter()
                         // get the first address that is private (belongs to the local network)
-                        .filter(|addr| addr.is_private())
-                        .next()
+                        .find(|addr| addr.is_private())
                     {
                         log::info!(
                             "{} resolved at host {} listening on {addr}",
@@ -196,7 +195,7 @@ impl DnetService {
         self.sysinfo.refresh_all();
         self.properties.refresh_sysinfo(&self.sysinfo);
 
-        self.mdns_update_service();
+        self.mdns_update_service().await;
 
         Ok(())
     }
