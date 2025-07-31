@@ -1,4 +1,5 @@
 use mdns_sd::{IntoTxtProperties, TxtProperties};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// A collection of metrics about a service instance.
@@ -9,21 +10,10 @@ use std::collections::HashMap;
 /// Also implements [`From<TxtProperties>`] so that these properties can be
 /// repopulated from mDNS `TXT` records.
 ///
-/// ---
-/// Uses `repr(C)` to ensure that the memory layout is compatible with C FFI, and can be passed
-/// to/from C code.
-///
-/// The corresponding C/C++ declaration would be:
-/// ```c
-/// typedef struct {
-///   uint64_t available_memory; // in bytes
-///   uint64_t free_memory;      // in bytes
-///   uint64_t total_memory;     // in bytes
-///   bool is_manager;           // whether this service is a manager or not
-///   bool is_busy;              // whether this service is currently doing a task or not
-/// } dnet_service_properties_t;
-///   ```
-#[derive(Debug, Clone)]
+/// We are not using `repr(C)` in particular, because we are interested in a hashmap
+/// where this struct is the value, and the keys are strings (peer ids). So the natural
+/// thing to do is to serialize this to a JSON string to pass via FFI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[repr(C)]
 pub struct DnetServiceProperties {
     /// Amount of available memory in RAM, in bytes.
@@ -119,7 +109,7 @@ impl IntoTxtProperties for &DnetServiceProperties {
         // check lengths, must not exceed 255 bytes
         for (key, value) in props.iter() {
             if key.len() + value.len() > 255 {
-                log::warn!("Property {} exceeds 255 bytes", key);
+                log::warn!("Property {key}={value} exceeds 255 bytes");
             }
         }
 

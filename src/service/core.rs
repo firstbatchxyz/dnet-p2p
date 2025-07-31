@@ -14,7 +14,7 @@ pub struct DnetService {
     /// Usually listens to CTRL+C, or any other graceful shutdown on errors.
     pub(crate) cancellation: CancellationToken,
     /// A mapping of services from their `fullname` to their last-seen properties.
-    pub(crate) peer_props: HashMap<String, DnetServiceProperties>,
+    pub peer_props: HashMap<String, DnetServiceProperties>,
     /// A system information object to monitor resources.
     pub(crate) sysinfo: sysinfo::System,
     /// A shared service properties object.

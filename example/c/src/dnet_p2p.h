@@ -41,8 +41,20 @@ extern dnet_p2p_handle_t *dnet_p2p_start(dnet_p2p_t *service_ptr);
  * @brief Stop the `dnet` service
  * @param service_ptr pointer to the `dnet` service instance
  * @param handle_ptr handle for the thread that is running `dnet` service
+ * @return 0 on success, -1 on error
  */
 extern int dnet_p2p_stop(dnet_p2p_t *service_ptr,
                          dnet_p2p_handle_t *handle_ptr);
+
+/**
+ * @brief Get the properties of the `dnet` service
+ *
+ * @param service_ptr pointer to the `dnet` service instance
+ * @param buf buffer to write the properties to
+ * @param buf_size size of the buffer
+ * @return 0 on success, -1 on error
+ */
+extern int dnet_p2p_get_properties(dnet_p2p_t *service_ptr, void *buf,
+                                   size_t buf_size);
 
 #endif // DNET_P2P_H

@@ -156,3 +156,49 @@ pub unsafe extern "C" fn dnet_p2p_stop(
         }
     }
 }
+
+/// Returns the properties of the service.
+///
+/// This function returns a pointer to a `DnetServiceProperties` struct, which contains the properties of the service.
+/// The properties are populated from the service's internal state.
+///
+/// ---
+/// C/C++ declaration:
+/// ```c
+/// extern int dnet_p2p_get_properties(dnet_p2p_t* service_ptr,void *buf, size_t buf_size);
+/// ```
+///
+/// Returns the number of bytes received on success; otherwise, returns -1.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dnet_p2p_get_properties(
+    service_ptr: *mut DnetService,
+    buf: *const u8,
+    buf_size: usize,
+) -> i32 {
+    let service = unsafe {
+        assert!(!service_ptr.is_null());
+        &mut *service_ptr
+    };
+
+    let properties_bytes = match serde_json::to_vec(&service.peer_props) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            log::error!("Failed to serialize properties: {err}");
+            return -1;
+        }
+    };
+
+    if properties_bytes.len() > buf_size {
+        log::error!("Buffer too small");
+        return -1;
+    }
+
+    // copy the serialized properties into the provided buffer
+    std::ptr::copy_nonoverlapping(
+        properties_bytes.as_ptr(),
+        buf as *mut u8,
+        properties_bytes.len(),
+    );
+
+    properties_bytes.len() as i32
+}
