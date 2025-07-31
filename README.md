@@ -47,12 +47,16 @@ Note that there can only be one manager at a time.
 
 ### FFI from C/C++
 
-Include the shared library within your loader step, e.g. `-L some/directory -ldnet_p2p`. Then, include [`dnet_p2p.h`](./example/src/dnet_p2p.h) in your code.
+Include the shared library within your loader step, e.g. `-L some/directory -ldnet_p2p`. Then, include [`dnet_p2p.h`](./example/c/src/dnet_p2p.h) in your code.
 
 - You can create a new service object with `dnet_p2p_new` which returns you an object pointer, and free it later with `dnet_p2p_free`.
 - You can start the service with `dnet_p2p_start` which returns you a thread handle pointer, and then stop it with `dnet_p2p_stop`.
 
-See the [header file](./example/src/dnet_p2p.h) for more specific instructions.
+See the [header file](./example/c/src/dnet_p2p.h) for more specific instructions.
+
+### FFI from Python
+
+A utility class is provided within [`dnet_p2p.py`](./example/py/src/dnet_p2p.py) that wraps the function calls for the shared library using `ctypes`. It provides both context usage (i.e. `with`) and normal usage.
 
 ### Discovering with [dns-sd](https://man.netbsd.org/dns-sd.1)
 

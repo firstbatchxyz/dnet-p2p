@@ -3,7 +3,7 @@ CFLAGS = -I. -I$(SRC_DIR)
 
 # we load the shared library from the target/release (or target/debug) directory
 # of the Rust project, which is where Cargo places the compiled library
-LDFLAGS = -L ../target/debug -ldnet_p2p
+LDFLAGS = -L ../../target/debug -ldnet_p2p
 # LDFLAGS = -L ../target/release -ldnet_p2p
 
 SRC_DIR = src
