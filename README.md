@@ -58,6 +58,16 @@ See the [header file](./example/c/src/dnet_p2p.h) for more specific instructions
 
 A utility class is provided within [`dnet_p2p.py`](./example/py/src/dnet_p2p.py) that wraps the function calls for the shared library using `ctypes`. It provides both context usage (i.e. `with`) and normal usage.
 
+See an example at [`main.py`](./example/py/main.py) that you can run with:
+
+```sh
+# worker
+uv run main.py
+
+# manager
+uv run main.py -m
+```
+
 ### Discovering with [dns-sd](https://man.netbsd.org/dns-sd.1)
 
 When the daemon is running, we can detect the mDNS service with the [dns-sd](https://manp.gs/mac/1/dns-sd) standard tool.
