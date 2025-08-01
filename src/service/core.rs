@@ -12,7 +12,7 @@ pub struct DnetService {
     /// The cancellation token to cancel the service gracefully.
     ///
     /// Usually listens to CTRL+C, or any other graceful shutdown on errors.
-    pub(crate) cancellation: CancellationToken,
+    pub cancellation: CancellationToken,
     /// A mapping of services from their `fullname` to their last-seen properties.
     pub peer_props: HashMap<String, DnetServiceProperties>,
     /// A system information object to monitor resources.
@@ -46,8 +46,14 @@ impl DnetService {
         hostname: String,
         is_manager: bool,
     ) -> eyre::Result<Self> {
-        let sysinfo = sysinfo::System::new_all();
-        let properties = DnetServiceProperties::new(&sysinfo, is_manager);
+        let mut sysinfo = sysinfo::System::new_all();
+        sysinfo.refresh_cpu_all();
+        let properties = DnetServiceProperties::new(
+            &sysinfo,
+            is_manager,
+            hostname.clone(),
+            instance_name.clone(),
+        );
 
         Ok(Self {
             cancellation,

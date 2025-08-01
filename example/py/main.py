@@ -1,10 +1,11 @@
 from time import sleep
 from socket import gethostname
 from src.dnet_p2p import DnetP2P
+from secrets import token_hex
 
 
 def main():
-    instancename = "my-app"
+    instancename = token_hex(8)
     hostname = gethostname()
     print(f"Using hostname: {hostname}")
     with DnetP2P("../../target/debug/libdnet_p2p.dylib") as dnet:

@@ -3,11 +3,26 @@ Python FFI wrapper for dnet-p2p library.
 This module provides a Python interface to the dnet-p2p C library using ctypes.
 """
 
-import json
 import ctypes
 import os
 import platform
-from typing import Optional
+import json
+from typing import Optional, Dict
+from pydantic import BaseModel
+
+
+class DnetDeviceProperties(BaseModel):
+    """Model representing the properties of a dnet device."""
+
+    mem_avail: int
+    mem_total: int
+    mem_free: int
+    num_cpus: int
+    cpu_brand: str
+    is_manager: bool
+    is_busy: bool
+    hostname: str
+    instance_name: str
 
 
 class DnetP2PError(Exception):
@@ -217,7 +232,9 @@ class DnetP2P:
         """
         return self._service_ptr is not None
 
-    def get_properties(self, buffer_size: int = 2048) -> bytes:
+    def get_properties(
+        self, buffer_size: int = 2048
+    ) -> Dict[str, DnetDeviceProperties]:
         """
         Get the properties of the dnet service.
 
@@ -230,14 +247,13 @@ class DnetP2P:
         Raises:
             DnetP2PError: If no instance is created or if the operation fails
             UnicodeDecodeError: If the data cannot be decoded with the specified encoding
+            ValidationError: If the properties data does not match the expected format
         """
         if self._service_ptr is None:
             raise DnetP2PError("No instance created.")
 
-        # Create a buffer to receive the properties
+        # create a buffer to receive the properties & call
         buffer = ctypes.create_string_buffer(buffer_size)
-
-        # Call the C function
         result = self._lib.dnet_p2p_get_properties(
             self._service_ptr, buffer, buffer_size
         )
@@ -248,9 +264,15 @@ class DnetP2P:
         # get the buffer up to the first null terminator
         properties_bytes = buffer.raw.rstrip(b"\x00")
 
-        # deserialize JSON
+        # deserialize & validate
         properties_str = properties_bytes.decode("utf-8")
-        properties = json.loads(properties_str)
+        properties_json: Dict[str, object] = json.loads(properties_str)
+        # iterate each key in the JSON and convert to DnetDeviceProperties
+        if not isinstance(properties_json, dict):
+            raise DnetP2PError("Properties data is not a valid JSON object")
+        properties: Dict[str, DnetDeviceProperties] = {}
+        for key, value in properties_json.items():
+            properties[key] = DnetDeviceProperties.model_validate(value)
 
         return properties
 

@@ -36,3 +36,4 @@ serde = { version = "1.0", features = [
   "derive",
 ] } # FIXME: may remove if repr(C) works
 serde_json = "1.0" # FIXME: may remove if repr(C) works
+wgpu = "26.0.1"
