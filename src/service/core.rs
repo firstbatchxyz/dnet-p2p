@@ -44,8 +44,9 @@ pub struct DnetService {
 impl DnetService {
     pub fn new(
         cancellation: CancellationToken,
-        instance_name: String,
+        instance: String,
         hostname: String,
+        address: String,
         is_manager: bool,
     ) -> eyre::Result<Self> {
         // sysinfo
@@ -59,7 +60,8 @@ impl DnetService {
             &gpuinfo,
             is_manager,
             hostname.clone(),
-            instance_name.clone(),
+            instance.clone(),
+            address.clone(),
         );
 
         Ok(Self {
@@ -69,7 +71,7 @@ impl DnetService {
             peer_props: HashMap::new(),
             properties,
             mdns: ServiceDaemon::new().wrap_err("failed to create mDNS service daemon")?,
-            instance_name,
+            instance_name: instance,
             hostname,
             fullname: String::new(),
             is_manager,

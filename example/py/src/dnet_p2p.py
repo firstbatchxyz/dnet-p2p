@@ -7,7 +7,7 @@ import ctypes
 import os
 import platform
 import json
-from typing import Optional, Dict
+from typing import Dict
 from pydantic import BaseModel
 
 
@@ -26,10 +26,11 @@ class DnetDeviceProperties(BaseModel):
     gpu_brand: str
     gpu_type: str
     ## any ##
+    address: str
     is_manager: bool
     is_busy: bool
     hostname: str
-    instance_name: str
+    instance: str
 
 
 class DnetP2PError(Exception):
@@ -48,7 +49,7 @@ class DnetP2P:
     On error, raises DnetP2PError.
     """
 
-    def __init__(self, library_path: Optional[str] = None):
+    def __init__(self, library_dir: str = "lib"):
         """
         Initialize the DnetP2P wrapper.
 
@@ -56,47 +57,42 @@ class DnetP2P:
             library_path: Optional path to the shared library. If not provided,
                          will attempt to find the library automatically.
         """
-        self._lib = self._load_library(library_path)
+        self._lib = self._load_library(library_dir)
         self._setup_function_signatures()
         self._service_ptr = None
         self._handle_ptr = None
 
-    def _load_library(self, library_path: Optional[str]) -> ctypes.CDLL:
-        """Load the dnet-p2p shared library."""
-        # FIXME: maybe take input directory and fill the fjlename yourself?
-        if library_path is None:
-            # Try to find the library automatically
-            system = platform.system()
-            if system == "Darwin":  # macOS
-                lib_name = "libdnet_p2p.dylib"
-            elif system == "Linux":
-                lib_name = "libdnet_p2p.so"
-            elif system == "Windows":
-                lib_name = "dnet_p2p.dll"
-            else:
-                raise DnetP2PError(f"Unsupported platform: {system}")
+    def _load_library(self, library_dir: str) -> ctypes.CDLL:
+        """Load the dnet-p2p shared library.
 
-            # Look for the library in common locations
-            possible_paths = [
-                os.path.join(
-                    os.path.dirname(__file__), "..", "..", "target", "debug", lib_name
-                ),
-                os.path.join(
-                    os.path.dirname(__file__), "..", "..", "target", "release", lib_name
-                ),
-                lib_name,  # Try system path
-            ]
+        Args:
+            library_dir: Optional path to the directory containing the shared library.
+                         If None, will attempt to find the library automatically.
 
-            for path in possible_paths:
-                if os.path.exists(path):
-                    library_path = path
-                    break
-            else:
-                raise DnetP2PError(
-                    f"Could not find {lib_name} in any of the expected locations"
-                )
+        Returns:
+            ctypes.CDLL: Loaded shared library object.
+
+        Raises:
+            DnetP2PError: If the library cannot be found or loaded.
+        """
+        # determine the library name based on the platform
+        system = platform.system()
+        if system == "Darwin":  # macOS
+            lib_name = "libdnet_p2p.dylib"
+        elif system == "Linux":
+            lib_name = "libdnet_p2p.so"
+        elif system == "Windows":
+            lib_name = "dnet_p2p.dll"
+        else:
+            raise DnetP2PError(f"Unsupported platform: {system}")
+
+        # Use the provided library directory
+        library_path = os.path.join(library_dir, lib_name)
+        if not os.path.exists(library_path):
+            raise DnetP2PError(f"Library not found at {library_path}")
 
         try:
+            print(f"Loading dnet-p2p library from {library_path}")
             return ctypes.CDLL(library_path)
         except OSError as e:
             raise DnetP2PError(f"Failed to load library from {library_path}: {e}")
@@ -109,8 +105,9 @@ class DnetP2P:
 
         # dnet_p2p_new
         self._lib.dnet_p2p_new.argtypes = [
-            ctypes.c_char_p,  # instance_name
+            ctypes.c_char_p,  # instance
             ctypes.c_char_p,  # hostname
+            ctypes.c_char_p,  # address
             ctypes.c_int,  # is_manager
         ]
         self._lib.dnet_p2p_new.restype = ctypes.c_void_p
@@ -145,14 +142,15 @@ class DnetP2P:
         self._lib.dnet_p2p_enable_logs()
 
     def create_instance(
-        self, instance_name: str, hostname: str, is_manager: bool = False
+        self, instance: str, hostname: str, address: str, is_manager: bool = False
     ):
         """
         Create a new dnet instance.
 
         Args:
-            instance_name: Name of the dnet instance
+            instance: Name of the dnet instance
             hostname: Hostname to bind to, e.g. from `gethostname()` system call
+            address: Address that the instance has a service on.
             is_manager: If `True`, the instance will run in manager mode,
                        otherwise in worker mode
 
@@ -162,11 +160,12 @@ class DnetP2P:
         if self._service_ptr is not None:
             raise DnetP2PError("Instance already created. Call free_instance() first.")
 
-        instance_name_bytes = instance_name.encode("utf-8")
+        instance_bytes = instance.encode("utf-8")
         hostname_bytes = hostname.encode("utf-8")
+        address_bytes = address.encode("utf-8")
 
         self._service_ptr = self._lib.dnet_p2p_new(
-            instance_name_bytes, hostname_bytes, 1 if is_manager else 0
+            instance_bytes, hostname_bytes, address_bytes, 1 if is_manager else 0
         )
 
         if self._service_ptr is None:

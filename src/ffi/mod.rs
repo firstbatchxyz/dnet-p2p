@@ -49,15 +49,16 @@ pub extern "C" fn dnet_p2p_enable_logs() {
 /// ---
 /// C/C++ declaration:
 /// ```c
-/// extern dnet_p2p_t* dnet_p2p_new(void);
+/// extern dnet_p2p_t* dnet_p2p_new(void* instance_c, void* hostname_c, void* address_c, bool is_manager);
 /// ```
 #[unsafe(no_mangle)]
 pub extern "C" fn dnet_p2p_new(
-    instance_name_c: *const ffi::c_char,
+    instance_c: *const ffi::c_char,
     hostname_c: *const ffi::c_char,
+    address_c: *const ffi::c_char,
     is_manager: bool,
 ) -> *mut DnetService {
-    let [instance_name, hostname] = [instance_name_c, hostname_c].map(|ptr| {
+    let [instance_name, hostname, address] = [instance_c, hostname_c, address_c].map(|ptr| {
         unsafe {
             assert!(!ptr.is_null());
             ffi::CStr::from_ptr(ptr)
@@ -66,7 +67,14 @@ pub extern "C" fn dnet_p2p_new(
         .unwrap()
     });
 
-    let service = DnetService::new(CancellationToken::new(), instance_name.to_string(), hostname.to_string(), is_manager).unwrap(/* TODO: !!! */);
+    let service = DnetService::new(
+        CancellationToken::new(),
+        instance_name.to_string(),
+        hostname.to_string(),
+        address.to_string(),
+        is_manager,
+    )
+    .expect("Failed to create DnetService");
     Box::into_raw(Box::new(service))
 }
 

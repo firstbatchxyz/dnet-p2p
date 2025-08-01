@@ -46,7 +46,13 @@ async fn main() -> eyre::Result<()> {
             .expect("hostname not provided")
     });
 
-    let mut service = DnetService::new(cancellation, instance_name, hostname, args.is_manager)?;
+    let mut service = DnetService::new(
+        cancellation,
+        instance_name,
+        hostname,
+        "<no-address>".to_string(), // we dont care about the address in this example
+        args.is_manager,
+    )?;
     let handle_for_service = tokio::spawn(async move { service.start().await });
 
     log::info!("Aborting service...");

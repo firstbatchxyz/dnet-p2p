@@ -7,17 +7,18 @@ import sys
 
 def main():
     is_manager = "-m" in sys.argv
-    instancename = token_hex(8)
+    instance = token_hex(8)
     hostname = gethostname()
+    address = "<dont-care>"
 
     if is_manager:
-        print(f"Starting manager {instancename} at {hostname}")
+        print(f"Starting manager {instance} at {hostname}")
     else:
-        print(f"Starting worker {instancename} at {hostname}")
+        print(f"Starting worker {instance} at {hostname}")
 
-    with DnetP2P("../../target/release/libdnet_p2p.dylib") as dnet:
-        # dnet.enable_logs()  # enables rust logging
-        dnet.create_instance(instancename, hostname, is_manager=is_manager)
+    with DnetP2P("../../target/release") as dnet:
+        dnet.enable_logs()  # enables rust logging
+        dnet.create_instance(instance, hostname, address, is_manager=is_manager)
         dnet.start()
 
         # sleep a bit

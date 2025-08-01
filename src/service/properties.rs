@@ -49,7 +49,10 @@ pub struct DnetServiceProperties {
 
     /// Hostname of the machine.
     pub hostname: String,
-    pub instance_name: String,
+    /// Instance name of the service, e.g. "worker-1".
+    pub instance: String,
+    /// Address of the service (e.g. `{host}:{port}`), can be used to connect to it.
+    pub address: String,
 }
 
 impl DnetServiceProperties {
@@ -61,7 +64,8 @@ impl DnetServiceProperties {
         gpuinfo: &wgpu::Instance,
         is_manager: bool,
         hostname: String,
-        instance_name: String,
+        instance: String,
+        address: String,
     ) -> Self {
         let gpu_adapters = gpuinfo.enumerate_adapters(wgpu::Backends::all());
         let mut props = Self {
@@ -97,7 +101,8 @@ impl DnetServiceProperties {
             is_busy: false,
             is_manager,
             hostname,
-            instance_name,
+            instance,
+            address,
         };
 
         props.refresh_sysinfo(sysinfo);
@@ -141,8 +146,12 @@ impl From<&TxtProperties> for DnetServiceProperties {
                 .get_property_val_str("hostname")
                 .unwrap_or_default()
                 .to_string(),
-            instance_name: props
-                .get_property_val_str("instance_name")
+            instance: props
+                .get_property_val_str("instance")
+                .unwrap_or_default()
+                .to_string(),
+            address: props
+                .get_property_val_str("address")
                 .unwrap_or_default()
                 .to_string(),
             //------------ CPU ------------//
@@ -179,15 +188,19 @@ impl IntoTxtProperties for &DnetServiceProperties {
     fn into_txt_properties(self) -> TxtProperties {
         let props = HashMap::from_iter(
             [
-                ("mem_avail", self.mem_avail.to_string()),
-                ("mem_free", self.mem_free.to_string()),
-                ("mem_total", self.mem_total.to_string()),
                 ("is_manager", self.is_manager.to_string()),
                 ("is_busy", self.is_busy.to_string()),
                 ("hostname", self.hostname.to_string()),
-                ("instance_name", self.instance_name.to_string()),
+                ("instance", self.instance.to_string()),
+                ("address", self.address.to_string()),
+                //------------ MEM ------------//
+                ("mem_avail", self.mem_avail.to_string()),
+                ("mem_free", self.mem_free.to_string()),
+                ("mem_total", self.mem_total.to_string()),
+                //------------ CPU ------------//
                 ("num_cpus", self.num_cpus.to_string()),
                 ("cpu_brand", self.cpu_brand.to_string()),
+                //------------ GPU ------------//
                 ("num_gpus", self.num_gpus.to_string()),
                 ("gpu_brand", self.gpu_brand.to_string()),
                 ("gpu_type", self.gpu_type.to_string()),
