@@ -14,11 +14,18 @@ from pydantic import BaseModel
 class DnetDeviceProperties(BaseModel):
     """Model representing the properties of a dnet device."""
 
+    ## mem ##
     mem_avail: int
     mem_total: int
     mem_free: int
+    ## cpu ##
     num_cpus: int
     cpu_brand: str
+    ## gpu ##
+    num_gpus: int
+    gpu_brand: str
+    gpu_type: str
+    ## any ##
     is_manager: bool
     is_busy: bool
     hostname: str

@@ -15,8 +15,10 @@ pub struct DnetService {
     pub cancellation: CancellationToken,
     /// A mapping of services from their `fullname` to their last-seen properties.
     pub peer_props: HashMap<String, DnetServiceProperties>,
-    /// A system information object to monitor resources.
+    /// A system information object to monitor resources & CPUs.
     pub(crate) sysinfo: sysinfo::System,
+    /// A `wpgu` instance to retrieve GPU information.
+    pub(crate) gpuinfo: wgpu::Instance,
     /// A shared service properties object.
     ///
     /// This is published via mDNS to all other services.
@@ -46,10 +48,15 @@ impl DnetService {
         hostname: String,
         is_manager: bool,
     ) -> eyre::Result<Self> {
+        // sysinfo
         let mut sysinfo = sysinfo::System::new_all();
         sysinfo.refresh_cpu_all();
+
+        // gpuinfo
+        let gpuinfo = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
         let properties = DnetServiceProperties::new(
             &sysinfo,
+            &gpuinfo,
             is_manager,
             hostname.clone(),
             instance_name.clone(),
@@ -58,6 +65,7 @@ impl DnetService {
         Ok(Self {
             cancellation,
             sysinfo,
+            gpuinfo,
             peer_props: HashMap::new(),
             properties,
             mdns: ServiceDaemon::new().wrap_err("failed to create mDNS service daemon")?,

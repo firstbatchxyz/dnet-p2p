@@ -16,6 +16,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[repr(C)]
 pub struct DnetServiceProperties {
+    //------------ MEM ------------//
     /// Amount of available memory in RAM, in bytes.
     ///
     /// On top of `free_memory`, this is the amount of memory that can be re-used as well.
@@ -26,10 +27,19 @@ pub struct DnetServiceProperties {
     pub mem_free: u64,
     /// Total amount of memory in RAM, in bytes.
     pub mem_total: u64,
+    //------------ CPU ------------//
     /// Number of CPUs available to this service.
     pub num_cpus: u32,
     /// Brand of the CPU.
     pub cpu_brand: String,
+    //------------ GPU ------------//
+    /// Number of GPUs available to this service.
+    pub num_gpus: u32,
+    /// Brand of the GPU.
+    pub gpu_brand: String,
+    /// Type of the GPU, e.g. "Integrated" or "Dedicated".
+    pub gpu_type: String,
+    //------------ ANY ------------//
     /// Whether this service is a manager or not.
     ///
     /// We only expect there to be a single manager in the local network.
@@ -37,7 +47,7 @@ pub struct DnetServiceProperties {
     /// Whether this service is currently doing a task or not.
     pub is_busy: bool,
 
-    /// Connection information for the service.
+    /// Hostname of the machine.
     pub hostname: String,
     pub instance_name: String,
 }
@@ -48,25 +58,46 @@ impl DnetServiceProperties {
     /// [`Self::refresh_sysinfo`] is called immediately to populate the memory properties.
     pub fn new(
         sysinfo: &sysinfo::System,
+        gpuinfo: &wgpu::Instance,
         is_manager: bool,
         hostname: String,
         instance_name: String,
     ) -> Self {
+        let gpu_adapters = gpuinfo.enumerate_adapters(wgpu::Backends::all());
         let mut props = Self {
-            is_manager,
-            hostname,
-            instance_name,
+            //------------ MEM ------------//
             // these will be refreshed just below
             mem_avail: 0,
             mem_free: 0,
             mem_total: 0,
+            //------------ GPU ------------//
+            num_gpus: gpu_adapters.len() as u32,
+            gpu_brand: gpu_adapters.first().map_or_else(
+                || "Unknown".to_string(),
+                |adapter| adapter.get_info().name.to_string(),
+            ),
+            gpu_type: gpu_adapters.first().map_or_else(
+                || "Unknown".to_string(),
+                |adapter| match adapter.get_info().device_type {
+                    wgpu::DeviceType::Other => "Other".to_string(),
+                    wgpu::DeviceType::IntegratedGpu => "Integrated".to_string(),
+                    wgpu::DeviceType::DiscreteGpu => "Discrete".to_string(),
+                    wgpu::DeviceType::VirtualGpu => "Virtual".to_string(),
+                    wgpu::DeviceType::Cpu => "CPU".to_string(),
+                },
+            ),
+            //------------ CPU ------------//
             num_cpus: 0,
             cpu_brand: sysinfo
                 .cpus()
                 .first()
                 .map_or_else(|| "Unknown".to_string(), |cpu| cpu.brand().to_string()),
+            //------------ ANY ------------//
             // cant be busy at the start
             is_busy: false,
+            is_manager,
+            hostname,
+            instance_name,
         };
 
         props.refresh_sysinfo(sysinfo);
@@ -114,12 +145,26 @@ impl From<&TxtProperties> for DnetServiceProperties {
                 .get_property_val_str("instance_name")
                 .unwrap_or_default()
                 .to_string(),
+            //------------ CPU ------------//
             num_cpus: props
                 .get_property_val_str("num_cpus")
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0),
             cpu_brand: props
                 .get_property_val_str("cpu_brand")
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "Unknown".to_string()),
+            //------------ GPU ------------//
+            num_gpus: props
+                .get_property_val_str("num_gpus")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0),
+            gpu_brand: props
+                .get_property_val_str("gpu_brand")
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "Unknown".to_string()),
+            gpu_type: props
+                .get_property_val_str("gpu_type")
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| "Unknown".to_string()),
         }
@@ -143,6 +188,9 @@ impl IntoTxtProperties for &DnetServiceProperties {
                 ("instance_name", self.instance_name.to_string()),
                 ("num_cpus", self.num_cpus.to_string()),
                 ("cpu_brand", self.cpu_brand.to_string()),
+                ("num_gpus", self.num_gpus.to_string()),
+                ("gpu_brand", self.gpu_brand.to_string()),
+                ("gpu_type", self.gpu_type.to_string()),
             ]
             // map keys to strings
             .map(|(k, v)| (k.to_string(), v)),
@@ -156,5 +204,36 @@ impl IntoTxtProperties for &DnetServiceProperties {
         }
 
         props.into_txt_properties()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use sysinfo;
+    use wgpu::{Backends, Instance};
+
+    /// Prints the de
+    #[test]
+    fn test_gpu_detection() {
+        let instance = Instance::new(&wgpu::InstanceDescriptor::default());
+        for adapter in instance.enumerate_adapters(Backends::all()) {
+            let info = adapter.get_info();
+            println!("GPU Info: {:#?}", info);
+        }
+    }
+
+    #[test]
+    fn test_cpu_detection() {
+        let mut sys = sysinfo::System::new_all();
+        sys.refresh_all();
+        for cpu in sys.cpus() {
+            println!(
+                "CPU: {} ({} - {} MHz) at {}% usage",
+                cpu.name(),
+                cpu.brand(),
+                cpu.frequency(),
+                cpu.cpu_usage()
+            );
+        }
     }
 }
