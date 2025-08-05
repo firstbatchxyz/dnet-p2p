@@ -87,12 +87,12 @@ impl crate::DnetService {
     pub(super) async fn mdns_shutdown(&self) {
         const RETRY_SLEEP: Duration = Duration::from_millis(200);
 
-        while let Err(e) = self.mdns.shutdown() {
+        while let Err(err) = self.mdns.shutdown() {
             tokio::time::sleep(RETRY_SLEEP).await;
-            if let mdns_sd::Error::Again = e {
+            if let mdns_sd::Error::Again = err {
                 continue;
             } else {
-                log::error!("Failed to shutdown mDNS daemon: {}", e);
+                log::error!("Failed to shutdown mDNS daemon: {err}");
             }
             break;
         }
@@ -103,8 +103,8 @@ impl crate::DnetService {
     /// This is done by re-registering the service with the updated properties,
     /// as noted in [`mdns-sd` documentation](https://docs.rs/mdns-sd/0.13.9/mdns_sd/struct.ServiceDaemon.html#method.register)
     pub(super) async fn mdns_update_service(&self) {
-        if let Err(e) = self.mdns_register().await {
-            log::error!("Failed to update mDNS service properties: {}", e);
+        if let Err(err) = self.mdns_register().await {
+            log::error!("Failed to update mDNS service properties: {err}");
         } else {
             log::info!("Updated mDNS service properties for {}", self.fullname);
         }

@@ -151,7 +151,7 @@ impl From<&TxtProperties> for DnetServiceProperties {
             let prefix = format!("cpu_{i}");
             cpus.push(DnetServiceCPUProperties {
                 brand: props
-                    .get_property_val_str(&format!("{}.brand", prefix))
+                    .get_property_val_str(&format!("{prefix}.brand"))
                     .unwrap_or_default()
                     .to_string(),
             });
@@ -167,11 +167,11 @@ impl From<&TxtProperties> for DnetServiceProperties {
             let prefix = format!("gpu_{i}");
             gpus.push(DnetServiceGPUProperties {
                 name: props
-                    .get_property_val_str(&format!("{}.name", prefix))
+                    .get_property_val_str(&format!("{prefix}.name"))
                     .unwrap_or_default()
                     .to_string(),
                 kind: props
-                    .get_property_val_str(&format!("{}.kind", prefix))
+                    .get_property_val_str(&format!("{prefix}.kind"))
                     .unwrap_or_default()
                     .to_string(),
             });

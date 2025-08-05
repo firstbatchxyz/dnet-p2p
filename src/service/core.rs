@@ -137,10 +137,10 @@ impl DnetService {
                 log::debug!("Service {service} announced at {interface}");
             }
             DaemonEvent::Error(err) => {
-                log::error!("Daemon error: {}", err);
+                log::error!("Daemon error: {err}");
             }
             other => {
-                log::trace!("Daemon event: {:?}", other);
+                log::trace!("Daemon event: {other:?}");
             }
         };
     }
