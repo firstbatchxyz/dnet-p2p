@@ -42,7 +42,7 @@ async fn main() -> eyre::Result<()> {
     let hostname = args.hostname.unwrap_or_else(|| {
         gethostname()
             .into_string()
-            .map(|s| format!("{}-dnet", s))
+            .map(|name| format!("{name}-dnet"))
             .expect("hostname not provided")
     });
 

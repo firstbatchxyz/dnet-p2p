@@ -7,25 +7,37 @@ import ctypes
 import os
 import platform
 import json
-from typing import Dict
+from typing import Dict, List
 from pydantic import BaseModel
+
+
+class DnetServiceMemoryProperties(BaseModel):
+    """Model representing memory properties of a dnet service."""
+
+    avail: int  # Available memory in bytes
+    total: int  # Total memory in bytes
+    free: int  # Free memory in bytes
+
+
+class DnetServiceCPUProperties(BaseModel):
+    """Model representing CPU properties of a dnet service."""
+
+    brand: str
+
+
+class DnetServiceGPUProperties(BaseModel):
+    """Model representing GPU properties of a dnet service."""
+
+    name: str
+    kind: str
 
 
 class DnetDeviceProperties(BaseModel):
     """Model representing the properties of a dnet device."""
 
-    ## mem ##
-    mem_avail: int
-    mem_total: int
-    mem_free: int
-    ## cpu ##
-    num_cpus: int
-    cpu_brand: str
-    ## gpu ##
-    num_gpus: int
-    gpu_brand: str
-    gpu_type: str
-    ## any ##
+    mem: DnetServiceMemoryProperties
+    cpus: List[DnetServiceCPUProperties]
+    gpus: List[DnetServiceGPUProperties]
     address: str
     is_manager: bool
     is_busy: bool
