@@ -152,36 +152,55 @@ impl DnetService {
     fn handle_browse_event(&mut self, event: ServiceEvent) {
         match event {
             ServiceEvent::ServiceResolved(info) => {
-                if info.get_fullname().ends_with(Self::MDNS_SERVICE_TYPE) {
-                    if let Some(addr) = info
-                        .get_addresses_v4()
-                        .iter()
-                        // get the first address that is private (belongs to the local network)
-                        .find(|addr| addr.is_private())
-                    {
-                        log::info!(
-                            "{} resolved at host {} listening on {addr}",
-                            info.get_fullname(),
-                            info.get_hostname(),
-                        );
+                let fullname = info.get_fullname();
 
-                        let properties = DnetServiceProperties::from(info.get_properties());
-                        log::debug!("{properties:#?}");
+                // ignore non-dnet services
+                if !fullname.ends_with(Self::MDNS_SERVICE_TYPE) {
+                    log::trace!("Ignoring service {fullname}, not a dnet service");
+                    return;
+                }
 
-                        // check if we are both a manager
-                        if self.is_manager && properties.is_manager {
+                // check if this is us
+                if fullname == self.fullname {
+                    log::debug!("Resolved our own service: {fullname}");
+
+                    // update yourself in peer props, this is to "act" like you discovered
+                    // yourself, even if the props were updated anyways
+                    self.peer_props
+                        .insert(fullname.to_string(), self.properties.clone());
+                    return;
+                }
+
+                if let Some(addr) = info
+                    .get_addresses_v4()
+                    .iter()
+                    // get the first address that is private (belongs to the local network)
+                    .find(|addr| addr.is_private())
+                {
+                    log::info!(
+                        "{fullname} resolved at host {} listening on {addr}",
+                        info.get_hostname(),
+                    );
+
+                    let properties = match DnetServiceProperties::try_from(info.get_properties()) {
+                        Ok(props) => props,
+                        Err(e) => {
                             log::error!(
-                                "Found another manager {}, ignoring...",
+                                "Failed to parse properties for {}: {e}",
                                 info.get_fullname()
                             );
-                        } else {
-                            // add peer to the peer properties
-                            self.peer_props
-                                .insert(info.get_fullname().to_string(), properties);
+                            return;
                         }
+                    };
+                    log::debug!("{properties:#?}");
+
+                    // check if we are both a manager
+                    if self.is_manager && properties.is_manager {
+                        log::error!("Found another manager {fullname}, ignoring...",);
+                    } else {
+                        // add peer to the peer properties
+                        self.peer_props.insert(fullname.to_string(), properties);
                     }
-                } else {
-                    log::trace!("Ignoring service {}", info.get_fullname());
                 }
             }
             ServiceEvent::ServiceRemoved(service_name, fullname) => {

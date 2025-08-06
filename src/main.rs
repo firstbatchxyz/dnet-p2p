@@ -1,22 +1,14 @@
 use clap::Parser;
 use dnet_p2p::DnetService;
 use gethostname::gethostname;
-use tokio_util::sync::CancellationToken;
 
+use tokio_util::sync::CancellationToken;
 #[derive(Parser)]
 #[command(version, about)]
 struct Cli {
     /// Run as manager instead of worker
     #[arg(short = 'm', long = "manager", default_value_t = false)]
     is_manager: bool,
-
-    /// Instance name for the service.
-    #[arg(short = 'i', long = "instance")]
-    instance_name: String,
-
-    /// Hostname for the service, leave empty for machine hostname.
-    #[arg(long = "host")]
-    hostname: Option<String>,
 }
 
 #[tokio::main]
@@ -37,15 +29,20 @@ async fn main() -> eyre::Result<()> {
 
     let args = Cli::parse();
 
-    // register the service with mDNS
-    let instance_name = args.instance_name;
-    let hostname = args.hostname.unwrap_or_else(|| {
-        gethostname()
-            .into_string()
-            .map(|name| format!("{name}-dnet"))
-            .expect("hostname not provided")
-    });
+    // get time just for the sake of having a unique instance name
+    let instance_name = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos()
+        .to_string();
 
+    // use system hostname
+    let hostname = gethostname()
+        .into_string()
+        .map(|name| format!("{name}-dnet"))
+        .expect("`gethostname` failed");
+
+    // register the service with mDNS
     let mut service = DnetService::new(
         cancellation,
         instance_name,

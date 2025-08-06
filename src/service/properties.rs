@@ -1,5 +1,6 @@
 use mdns_sd::{IntoTxtProperties, TxtProperties};
 use serde::{Deserialize, Serialize};
+use serde_txtrecord::{from_txt_records, to_txt_records};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,18 +33,12 @@ pub struct DnetServiceMemoryProperties {
 
 /// A collection of metrics about a service instance.
 ///
-/// Implement [`IntoTxtProperties`] so that these properties can be used
-/// in mDNS `TXT` records.
+/// - Can be converted to/from JSON via [`serde_json`].
+/// - Can be converted to/from TXT records via [`serde_txtrecord`].
 ///
-/// Also implements [`From<TxtProperties>`] so that these properties can be
-/// repopulated from mDNS `TXT` records.
-///
-/// We are not using `repr(C)` in particular, because we are interested in a hashmap
+/// NOTE: We are not using `repr(C)` in particular, because we are interested in a hashmap
 /// where this struct is the value, and the keys are strings (peer ids). So the natural
 /// thing to do is to serialize this to a JSON string to pass via FFI.
-///
-/// TODO: Boolean fields are represented as `1` for `true` and `0` for `false` in the `TxtProperties`.
-/// However, as per RFC 6763, we could maybe simply omit them for `false` and put them without a value for `true`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DnetServiceProperties {
     pub mem: DnetServiceMemoryProperties,
@@ -106,12 +101,11 @@ impl DnetServiceProperties {
             total: sysinfo.total_memory(),
         };
         let mut props = Self {
+            // cant be busy at the start
+            is_busy: false,
             mem,
             cpus,
             gpus,
-            //------------ ANY ------------//
-            // cant be busy at the start
-            is_busy: false,
             is_manager,
             hostname,
             instance,
@@ -131,126 +125,28 @@ impl DnetServiceProperties {
     }
 }
 
-impl From<&TxtProperties> for DnetServiceProperties {
-    fn from(props: &TxtProperties) -> Self {
-        // memory stuff, all are `u64`
-        let [mem_avail, mem_free, mem_total] = ["mem_avail", "mem_free", "mem_total"].map(|key| {
-            props
-                .get_property_val_str(key)
-                .and_then(|s| s.parse().ok())
-                .unwrap_or_default()
-        });
+impl TryFrom<&TxtProperties> for DnetServiceProperties {
+    type Error = serde_txtrecord::DeserializeError;
 
-        // CPU properties
-        let num_cpus = props
-            .get_property_val_str("num_cpus")
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0);
-        let mut cpus = Vec::with_capacity(num_cpus as usize);
-        for i in 0..num_cpus {
-            let prefix = format!("cpu_{i}");
-            cpus.push(DnetServiceCPUProperties {
-                brand: props
-                    .get_property_val_str(&format!("{prefix}.brand"))
-                    .unwrap_or_default()
-                    .to_string(),
-            });
-        }
+    /// Converts the `TxtProperties` into a `DnetServiceProperties` instance.
+    /// This will fail if the properties cannot be parsed correctly.
+    fn try_from(props: &TxtProperties) -> Result<Self, Self::Error> {
+        let keys_values: Vec<(String, String)> = props
+            .iter()
+            .map(|e| (e.key().to_string(), e.val_str().to_string()))
+            .collect();
 
-        // GPU properties
-        let num_gpus = props
-            .get_property_val_str("num_gpus")
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0);
-        let mut gpus = Vec::with_capacity(num_gpus as usize);
-        for i in 0..num_gpus {
-            let prefix = format!("gpu_{i}");
-            gpus.push(DnetServiceGPUProperties {
-                name: props
-                    .get_property_val_str(&format!("{prefix}.name"))
-                    .unwrap_or_default()
-                    .to_string(),
-                kind: props
-                    .get_property_val_str(&format!("{prefix}.kind"))
-                    .unwrap_or_default()
-                    .to_string(),
-            });
-        }
-
-        // strings
-        let [hostname, instance, address] = ["hostname", "instance", "address"].map(|key| {
-            props
-                .get_property_val_str(key)
-                .unwrap_or_default()
-                .to_string()
-        });
-
-        // booleans
-        let [is_manager, is_busy] =
-            ["is_manager", "is_busy"].map(|key| props.get_property_val_str(key).is_some());
-
-        Self {
-            mem: DnetServiceMemoryProperties {
-                avail: mem_avail,
-                free: mem_free,
-                total: mem_total,
-            },
-            hostname,
-            instance,
-            address,
-            cpus,
-            gpus,
-            is_manager,
-            is_busy,
-        }
+        from_txt_records(keys_values)
     }
 }
 
 impl IntoTxtProperties for &DnetServiceProperties {
     /// Converts the service properties into a `TxtProperties` instance.
-    ///
-    /// Each key-value pair is converted to a string representation as `{key}={value}`
-    /// and must not exceed 255 bytes in total length, as per [RFC 6763 Sec. 6](https://www.rfc-editor.org/rfc/rfc6763.html#section-6).
     fn into_txt_properties(self) -> TxtProperties {
-        let mut props = HashMap::from_iter(
-            [
-                ("hostname", self.hostname.to_string()),
-                ("instance", self.instance.to_string()),
-                ("address", self.address.to_string()),
-                ("mem_avail", self.mem.avail.to_string()),
-                ("mem_free", self.mem.free.to_string()),
-                ("mem_total", self.mem.total.to_string()),
-            ]
-            // map keys to strings
-            .map(|(k, v)| (k.to_string(), v)),
-        );
+        let txt_records =
+            to_txt_records(self).expect("could not serialize service properties to TXT records");
 
-        // bools
-        if self.is_manager {
-            props.insert("is_manager".to_string(), String::default());
-        }
-        if self.is_busy {
-            props.insert("is_busy".to_string(), String::default());
-        }
-
-        // add CPU and GPU brands
-        props.insert("num_cpus".to_string(), self.cpus.len().to_string());
-        for (i, cpu) in self.cpus.iter().enumerate() {
-            props.insert(format!("cpu_{i}.brand"), cpu.brand.to_string());
-        }
-        props.insert("num_gpus".to_string(), self.gpus.len().to_string());
-        for (i, gpu) in self.gpus.iter().enumerate() {
-            props.insert(format!("gpu_{i}.name"), gpu.name.to_string());
-            props.insert(format!("gpu_{i}.kind"), gpu.kind.to_string());
-        }
-
-        // check lengths, must not exceed 255 bytes
-        for (key, value) in props.iter() {
-            if key.len() + value.len() > 255 {
-                log::warn!("Property {key}={value} exceeds 255 bytes");
-            }
-        }
-        props.into_txt_properties()
+        HashMap::from_iter(txt_records.into_iter()).into_txt_properties()
     }
 }
 
