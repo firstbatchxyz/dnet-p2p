@@ -212,3 +212,34 @@ pub unsafe extern "C" fn dnet_p2p_get_properties(
 
     properties_bytes.len() as i32
 }
+
+/// Sets the busy status of the service.
+///
+/// This function updates the `is_busy` property of the service and refreshes the mDNS service
+/// if the service is not in passive mode.
+///
+/// ---
+/// C/C++ declaration:
+/// ```c
+/// extern void dnet_p2p_set_is_busy(dnet_p2p_t* service_ptr, bool is_busy);
+/// ```
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dnet_p2p_set_is_busy(
+    service_ptr: *mut DnetService,
+    is_busy: bool,
+) {
+    let service = unsafe {
+        assert!(!service_ptr.is_null());
+        &mut *service_ptr
+    };
+
+    // create a minimal runtime to handle the async call
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("could not create runtime");
+
+    rt.block_on(async {
+        service.set_is_busy(is_busy).await;
+    });
+}

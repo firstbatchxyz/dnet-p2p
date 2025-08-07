@@ -247,4 +247,16 @@ impl DnetService {
 
         Ok(())
     }
+
+    /// Sets the busy status of the service and updates mDNS if not passive.
+    pub async fn set_is_busy(&mut self, is_busy: bool) {
+        self.properties.is_busy = is_busy;
+        
+        // only update mDNS service if not passive
+        if !self.is_passive {
+            self.mdns_update_service().await;
+        }
+        
+        log::debug!("Set is_busy to {is_busy}");
+    }
 }

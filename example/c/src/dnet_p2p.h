@@ -60,4 +60,11 @@ extern int dnet_p2p_stop(dnet_p2p_t *service_ptr,
 extern int dnet_p2p_get_properties(dnet_p2p_t *service_ptr, void *buf,
                                    size_t buf_size);
 
+/**
+ * @brief Set the busy status of the service
+ * @param service_ptr pointer to the `dnet` service instance
+ * @param is_busy true if the service is busy, false otherwise
+ */
+extern void dnet_p2p_set_is_busy(dnet_p2p_t *service_ptr, bool is_busy);
+
 #endif // DNET_P2P_H

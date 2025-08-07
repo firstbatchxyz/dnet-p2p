@@ -148,6 +148,13 @@ class DnetP2P:
         ]
         self._lib.dnet_p2p_get_properties.restype = ctypes.c_int
 
+        # dnet_p2p_set_is_busy
+        self._lib.dnet_p2p_set_is_busy.argtypes = [
+            ctypes.c_void_p,  # service_ptr
+            ctypes.c_bool,    # is_busy
+        ]
+        self._lib.dnet_p2p_set_is_busy.restype = None
+
     def enable_logs(self):
         """
         Enable logging for dnet, respecting the RUST_LOG environment variable.
@@ -295,6 +302,24 @@ class DnetP2P:
             properties[key] = DnetDeviceProperties.model_validate(value)
 
         return properties
+
+    def set_is_busy(self, is_busy: bool):
+        """
+        Set the busy status of the service.
+
+        This updates the is_busy property of the service and refreshes mDNS 
+        if the service is not in passive mode.
+
+        Args:
+            is_busy: True if the service is busy, False otherwise
+
+        Raises:
+            DnetP2PError: If no instance is created
+        """
+        if self._service_ptr is None:
+            raise DnetP2PError("No instance created.")
+
+        self._lib.dnet_p2p_set_is_busy(self._service_ptr, is_busy)
 
     def __enter__(self):
         """Context manager entry."""
