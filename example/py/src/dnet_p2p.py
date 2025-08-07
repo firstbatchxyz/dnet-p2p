@@ -4,10 +4,10 @@ This module provides a Python interface to the dnet-p2p C library using ctypes.
 """
 
 import ctypes
+import json
 import os
 import platform
-import json
-from typing import Dict, List
+
 from pydantic import BaseModel
 
 
@@ -36,8 +36,8 @@ class DnetDeviceProperties(BaseModel):
     """Model representing the properties of a dnet device."""
 
     mem: DnetServiceMemoryProperties
-    cpus: List[DnetServiceCPUProperties]
-    gpus: List[DnetServiceGPUProperties]
+    cpus: list[DnetServiceCPUProperties]
+    gpus: list[DnetServiceGPUProperties]
     address: str
     is_manager: bool
     is_busy: bool
@@ -47,8 +47,6 @@ class DnetDeviceProperties(BaseModel):
 
 class DnetP2PError(Exception):
     """Exception raised for dnet-p2p related errors."""
-
-    pass
 
 
 class DnetP2P:
@@ -107,7 +105,9 @@ class DnetP2P:
             print(f"Loading dnet-p2p library from {library_path}")
             return ctypes.CDLL(library_path)
         except OSError as e:
-            raise DnetP2PError(f"Failed to load library from {library_path}: {e}")
+            raise DnetP2PError(
+                f"Failed to load library from {library_path}: {e}"
+            ) from e
 
     def _setup_function_signatures(self):
         """Set up function signatures for type safety."""
@@ -151,7 +151,7 @@ class DnetP2P:
         # dnet_p2p_set_is_busy
         self._lib.dnet_p2p_set_is_busy.argtypes = [
             ctypes.c_void_p,  # service_ptr
-            ctypes.c_bool,    # is_busy
+            ctypes.c_bool,  # is_busy
         ]
         self._lib.dnet_p2p_set_is_busy.restype = None
 
@@ -162,7 +162,12 @@ class DnetP2P:
         self._lib.dnet_p2p_enable_logs()
 
     def create_instance(
-        self, instance: str, hostname: str, address: str, is_manager: bool = False, is_passive: bool = False
+        self,
+        instance: str,
+        hostname: str,
+        address: str,
+        is_manager: bool = False,
+        is_passive: bool = False,
     ):
         """
         Create a new dnet instance.
@@ -186,7 +191,11 @@ class DnetP2P:
         address_bytes = address.encode("utf-8")
 
         self._service_ptr = self._lib.dnet_p2p_new(
-            instance_bytes, hostname_bytes, address_bytes, 1 if is_manager else 0, 1 if is_passive else 0
+            instance_bytes,
+            hostname_bytes,
+            address_bytes,
+            1 if is_manager else 0,
+            1 if is_passive else 0,
         )
 
         if self._service_ptr is None:
@@ -261,7 +270,7 @@ class DnetP2P:
 
     def get_properties(
         self, buffer_size: int = 2048
-    ) -> Dict[str, DnetDeviceProperties]:
+    ) -> dict[str, DnetDeviceProperties]:
         """
         Get the properties of the dnet service.
 
@@ -293,11 +302,11 @@ class DnetP2P:
 
         # deserialize & validate
         properties_str = properties_bytes.decode("utf-8")
-        properties_json: Dict[str, object] = json.loads(properties_str)
+        properties_json: dict[str, object] = json.loads(properties_str)
         # iterate each key in the JSON and convert to DnetDeviceProperties
         if not isinstance(properties_json, dict):
             raise DnetP2PError("Properties data is not a valid JSON object")
-        properties: Dict[str, DnetDeviceProperties] = {}
+        properties: dict[str, DnetDeviceProperties] = {}
         for key, value in properties_json.items():
             properties[key] = DnetDeviceProperties.model_validate(value)
 
@@ -307,7 +316,7 @@ class DnetP2P:
         """
         Set the busy status of the service.
 
-        This updates the is_busy property of the service and refreshes mDNS 
+        This updates the is_busy property of the service and refreshes mDNS
         if the service is not in passive mode.
 
         Args:
