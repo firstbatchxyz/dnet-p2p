@@ -9,6 +9,9 @@ struct Cli {
     /// Run as manager instead of worker
     #[arg(short = 'm', long = "manager", default_value_t = false)]
     is_manager: bool,
+    /// Run in passive mode (monitor only, don't register to mDNS)
+    #[arg(short = 'p', long = "passive", default_value_t = false)]
+    is_passive: bool,
 }
 
 #[tokio::main]
@@ -49,10 +52,10 @@ async fn main() -> eyre::Result<()> {
         hostname,
         "<no-address>".to_string(), // we dont care about the address in this example
         args.is_manager,
+        args.is_passive,
     )?;
     let handle_for_service = tokio::spawn(async move { service.start().await });
 
-    log::info!("Aborting service...");
     if let Err(err) = handle_for_service.await {
         log::error!("Error while waiting for service: {err}");
     }

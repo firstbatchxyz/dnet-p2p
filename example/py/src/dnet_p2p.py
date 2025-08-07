@@ -121,6 +121,7 @@ class DnetP2P:
             ctypes.c_char_p,  # hostname
             ctypes.c_char_p,  # address
             ctypes.c_int,  # is_manager
+            ctypes.c_int,  # is_passive
         ]
         self._lib.dnet_p2p_new.restype = ctypes.c_void_p
 
@@ -154,7 +155,7 @@ class DnetP2P:
         self._lib.dnet_p2p_enable_logs()
 
     def create_instance(
-        self, instance: str, hostname: str, address: str, is_manager: bool = False
+        self, instance: str, hostname: str, address: str, is_manager: bool = False, is_passive: bool = False
     ):
         """
         Create a new dnet instance.
@@ -165,6 +166,7 @@ class DnetP2P:
             address: Address that the instance has a service on.
             is_manager: If `True`, the instance will run in manager mode,
                        otherwise in worker mode
+            is_passive: If `True`, the instance will only monitor (not register to mDNS)
 
         Raises:
             DnetP2PError: If instance creation fails
@@ -177,7 +179,7 @@ class DnetP2P:
         address_bytes = address.encode("utf-8")
 
         self._service_ptr = self._lib.dnet_p2p_new(
-            instance_bytes, hostname_bytes, address_bytes, 1 if is_manager else 0
+            instance_bytes, hostname_bytes, address_bytes, 1 if is_manager else 0, 1 if is_passive else 0
         )
 
         if self._service_ptr is None:

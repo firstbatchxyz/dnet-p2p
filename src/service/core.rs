@@ -39,6 +39,8 @@ pub struct DnetService {
     pub(crate) fullname: String,
     /// Whether this service is a manager or not.
     pub(crate) is_manager: bool,
+    /// Whether this service is passive (monitors only, doesn't register to mDNS).
+    pub(crate) is_passive: bool,
 }
 
 impl DnetService {
@@ -48,6 +50,7 @@ impl DnetService {
         hostname: String,
         address: String,
         is_manager: bool,
+        is_passive: bool,
     ) -> eyre::Result<Self> {
         // sysinfo
         let mut sysinfo = sysinfo::System::new_all();
@@ -75,6 +78,7 @@ impl DnetService {
             hostname,
             fullname: String::new(),
             is_manager,
+            is_passive,
         })
     }
     /// Starts the service with mDNS daemon.
@@ -84,7 +88,10 @@ impl DnetService {
         let mut property_refresh_interval = tokio::time::interval(PROPERTY_REFRESH_INTERVAL);
         property_refresh_interval.tick().await; // wait for the first tick
 
-        self.fullname = self.mdns_register().await?;
+        // only register to mDNS if not passive
+        if !self.is_passive {
+            self.fullname = self.mdns_register().await?;
+        }
 
         // browse for services
         let browser = self
@@ -160,8 +167,8 @@ impl DnetService {
                     return;
                 }
 
-                // check if this is us
-                if fullname == self.fullname {
+                // check if this is us (only relevant if not passive)
+                if !self.is_passive && fullname == self.fullname {
                     log::debug!("Resolved our own service: {fullname}");
 
                     // update yourself in peer props, this is to "act" like you discovered
@@ -220,7 +227,10 @@ impl DnetService {
 
     /// Stops the service gracefully.
     pub async fn stop(&mut self) {
-        self.mdns_unregister().await;
+        // only unregister if not passive (since we never registered)
+        if !self.is_passive {
+            self.mdns_unregister().await;
+        }
         self.mdns_shutdown().await;
     }
 
@@ -230,7 +240,10 @@ impl DnetService {
         self.sysinfo.refresh_all();
         self.properties.refresh_sysinfo(&self.sysinfo);
 
-        self.mdns_update_service().await;
+        // only update mDNS service if not passive
+        if !self.is_passive {
+            self.mdns_update_service().await;
+        }
 
         Ok(())
     }
