@@ -49,30 +49,33 @@ pub extern "C" fn dnet_p2p_enable_logs() {
 /// ---
 /// C/C++ declaration:
 /// ```c
-/// extern dnet_p2p_t* dnet_p2p_new(void* instance_c, void* hostname_c, void* address_c, bool is_manager, bool is_passive);
+/// extern dnet_p2p_t* dnet_p2p_new(void* instance_c, void* hostname_c, void* address_c, void* protocol_c, bool is_manager, bool is_passive);
 /// ```
 #[unsafe(no_mangle)]
 pub extern "C" fn dnet_p2p_new(
     instance_c: *const ffi::c_char,
     hostname_c: *const ffi::c_char,
     address_c: *const ffi::c_char,
+    protocol_c: *const ffi::c_char,
     is_manager: bool,
     is_passive: bool,
 ) -> *mut DnetService {
-    let [instance_name, hostname, address] = [instance_c, hostname_c, address_c].map(|ptr| {
-        unsafe {
-            assert!(!ptr.is_null());
-            ffi::CStr::from_ptr(ptr)
-        }
-        .to_str()
-        .unwrap()
-    });
+    let [instance, hostname, address, protocol] = [instance_c, hostname_c, address_c, protocol_c]
+        .map(|ptr| {
+            unsafe {
+                assert!(!ptr.is_null());
+                ffi::CStr::from_ptr(ptr)
+            }
+            .to_str()
+            .unwrap()
+        });
 
     let service = DnetService::new(
         CancellationToken::new(),
-        instance_name.to_string(),
+        instance.to_string(),
         hostname.to_string(),
         address.to_string(),
+        protocol.to_string(),
         is_manager,
         is_passive,
     )
@@ -224,10 +227,7 @@ pub unsafe extern "C" fn dnet_p2p_get_properties(
 /// extern void dnet_p2p_set_is_busy(dnet_p2p_t* service_ptr, bool is_busy);
 /// ```
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn dnet_p2p_set_is_busy(
-    service_ptr: *mut DnetService,
-    is_busy: bool,
-) {
+pub unsafe extern "C" fn dnet_p2p_set_is_busy(service_ptr: *mut DnetService, is_busy: bool) {
     let service = unsafe {
         assert!(!service_ptr.is_null());
         &mut *service_ptr

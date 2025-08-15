@@ -10,7 +10,8 @@ def main():
     is_passive = "-p" in sys.argv
     instance = token_hex(8)
     hostname = gethostname()
-    address = "<dont-care>"
+    address = "<none>"  # dummy values
+    protocol = "<none>"  # dummy values
 
     if is_passive:
         print(f"Starting passive monitor {instance} at {hostname}")
@@ -21,7 +22,14 @@ def main():
 
     with DnetP2P("../../target/release") as dnet:
         dnet.enable_logs()  # enables rust logging
-        dnet.create_instance(instance, hostname, address, is_manager=is_manager, is_passive=is_passive)
+        dnet.create_instance(
+            instance,
+            hostname,
+            address,
+            protocol,
+            is_manager=is_manager,
+            is_passive=is_passive,
+        )
         dnet.start()
 
         # sleep a bit

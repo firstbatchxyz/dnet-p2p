@@ -29,14 +29,10 @@ impl crate::DnetService {
     /// so we need to know that and unregister with the correct name.
     pub(super) async fn mdns_register(&self) -> eyre::Result<String> {
         // register your own hostname
-        log::debug!(
-            "Registering {} of host {}",
-            self.instance_name,
-            self.hostname
-        );
+        log::debug!("Registering {} of host {}", self.instance, self.hostname);
         let service_info = ServiceInfo::new(
             Self::MDNS_SERVICE_TYPE,
-            &self.instance_name,
+            &self.instance,
             &format!("{}.local.", self.hostname),
             "", // thanks to `enable_addr_auto` we can give this as empty string
             0,  // a dummy port, we will use TXT RECORDs instead

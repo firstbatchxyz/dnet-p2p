@@ -29,7 +29,7 @@ pub struct DnetService {
     ///
     /// If multiple instances exist, the new one will have a number appended to it,
     /// e.g. `foobar`, `foobar (2)`, etc.
-    pub(crate) instance_name: String,
+    pub(crate) instance: String,
     /// Name of the host this service is running on.
     ///
     /// Usually retrieved from `gethostname` syscall,
@@ -49,6 +49,7 @@ impl DnetService {
         instance: String,
         hostname: String,
         address: String,
+        protocol: String,
         is_manager: bool,
         is_passive: bool,
     ) -> eyre::Result<Self> {
@@ -65,6 +66,7 @@ impl DnetService {
             hostname.clone(),
             instance.clone(),
             address.clone(),
+            protocol.clone(),
         );
 
         Ok(Self {
@@ -74,9 +76,9 @@ impl DnetService {
             peer_props: HashMap::new(),
             properties,
             mdns: ServiceDaemon::new().wrap_err("failed to create mDNS service daemon")?,
-            instance_name: instance,
+            instance,
             hostname,
-            fullname: String::new(),
+            fullname: String::new(), // will be set after registration
             is_manager,
             is_passive,
         })
@@ -251,12 +253,12 @@ impl DnetService {
     /// Sets the busy status of the service and updates mDNS if not passive.
     pub async fn set_is_busy(&mut self, is_busy: bool) {
         self.properties.is_busy = is_busy;
-        
+
         // only update mDNS service if not passive
         if !self.is_passive {
             self.mdns_update_service().await;
         }
-        
+
         log::debug!("Set is_busy to {is_busy}");
     }
 }

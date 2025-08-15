@@ -166,6 +166,7 @@ class DnetP2P:
         instance: str,
         hostname: str,
         address: str,
+        protocol: str,
         is_manager: bool = False,
         is_passive: bool = False,
     ):
@@ -189,11 +190,13 @@ class DnetP2P:
         instance_bytes = instance.encode("utf-8")
         hostname_bytes = hostname.encode("utf-8")
         address_bytes = address.encode("utf-8")
+        protocol_bytes = protocol.encode("utf-8")
 
         self._service_ptr = self._lib.dnet_p2p_new(
             instance_bytes,
             hostname_bytes,
             address_bytes,
+            protocol_bytes,
             1 if is_manager else 0,
             1 if is_passive else 0,
         )

@@ -50,7 +50,8 @@ async fn main() -> eyre::Result<()> {
         cancellation,
         instance_name,
         hostname,
-        "<no-address>".to_string(), // we dont care about the address in this example
+        "<none>".to_string(), // we dont care about the address in this example
+        "<none>".to_string(), // we dont care about the protocol in this example
         args.is_manager,
         args.is_passive,
     )?;

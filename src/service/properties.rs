@@ -58,6 +58,8 @@ pub struct DnetServiceProperties {
     pub instance: String,
     /// Address of the service (e.g. `{host}:{port}`), can be used to connect to it.
     pub address: String,
+    /// Name of the protocol expected by the address, e.g. `grpc`, `http`, `ws`, etc.
+    pub protocol: String,
 }
 
 impl DnetServiceProperties {
@@ -71,6 +73,7 @@ impl DnetServiceProperties {
         hostname: String,
         instance: String,
         address: String,
+        protocol: String,
     ) -> Self {
         let gpus = gpuinfo
             .enumerate_adapters(wgpu::Backends::all())
@@ -110,6 +113,7 @@ impl DnetServiceProperties {
             hostname,
             instance,
             address,
+            protocol,
         };
 
         props.refresh_sysinfo(sysinfo);
@@ -191,6 +195,7 @@ mod tests {
             "localhost".to_string(),
             "test_instance".to_string(),
             "127.0.0.1".to_string(),
+            "none".to_string(),
         );
 
         println!("Service Properties: {:#?}", props.into_txt_properties());
