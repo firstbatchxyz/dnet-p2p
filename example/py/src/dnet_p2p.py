@@ -5,8 +5,8 @@ This module provides a Python interface to the dnet-p2p C library using ctypes.
 
 import ctypes
 import json
-import os
 import platform
+from pathlib import Path
 
 from pydantic import BaseModel
 
@@ -39,6 +39,7 @@ class DnetDeviceProperties(BaseModel):
     cpus: list[DnetServiceCPUProperties]
     gpus: list[DnetServiceGPUProperties]
     address: str
+    protocol: str
     is_manager: bool
     is_busy: bool
     hostname: str
@@ -97,13 +98,13 @@ class DnetP2P:
             raise DnetP2PError(f"Unsupported platform: {system}")
 
         # Use the provided library directory
-        library_path = os.path.join(library_dir, lib_name)
-        if not os.path.exists(library_path):
+        library_path = Path(library_dir) / lib_name
+        if not library_path.exists():
             raise DnetP2PError(f"Library not found at {library_path}")
 
         try:
             print(f"Loading dnet-p2p library from {library_path}")
-            return ctypes.CDLL(library_path)
+            return ctypes.CDLL(library_path)  # type: ignore
         except OSError as e:
             raise DnetP2PError(
                 f"Failed to load library from {library_path}: {e}"
