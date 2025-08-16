@@ -121,6 +121,7 @@ class DnetP2P:
             ctypes.c_char_p,  # instance
             ctypes.c_char_p,  # hostname
             ctypes.c_char_p,  # address
+            ctypes.c_char_p,  # protocol
             ctypes.c_int,  # is_manager
             ctypes.c_int,  # is_passive
         ]
