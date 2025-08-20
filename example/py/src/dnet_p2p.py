@@ -35,14 +35,14 @@ class DnetServiceGPUProperties(BaseModel):
 class DnetDeviceProperties(BaseModel):
     """Model representing the properties of a dnet device."""
 
-    mem: DnetServiceMemoryProperties
-    cpus: list[DnetServiceCPUProperties]
-    gpus: list[DnetServiceGPUProperties]
+    # mem: DnetServiceMemoryProperties
+    # cpus: list[DnetServiceCPUProperties]
+    # gpus: list[DnetServiceGPUProperties]
     address: str
     protocol: str
     is_manager: bool
     is_busy: bool
-    hostname: str
+    # hostname: str
     instance: str
 
 

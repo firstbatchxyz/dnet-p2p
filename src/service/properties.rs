@@ -41,10 +41,9 @@ pub struct DnetServiceMemoryProperties {
 /// thing to do is to serialize this to a JSON string to pass via FFI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DnetServiceProperties {
-    pub mem: DnetServiceMemoryProperties,
-    pub cpus: Vec<DnetServiceCPUProperties>,
-    pub gpus: Vec<DnetServiceGPUProperties>,
-
+    // pub mem: DnetServiceMemoryProperties,
+    // pub cpus: Vec<DnetServiceCPUProperties>,
+    // pub gpus: Vec<DnetServiceGPUProperties>,
     /// Whether this service is a manager or not.
     ///
     /// We only expect there to be a single manager in the local network.
@@ -53,7 +52,7 @@ pub struct DnetServiceProperties {
     pub is_busy: bool,
 
     /// Hostname of the machine.
-    pub hostname: String,
+    // pub hostname: String,
     /// Instance name of the service, e.g. "worker-1".
     pub instance: String,
     /// Address of the service (e.g. `{host}:{port}`), can be used to connect to it.
@@ -75,42 +74,42 @@ impl DnetServiceProperties {
         address: String,
         protocol: String,
     ) -> Self {
-        let gpus = gpuinfo
-            .enumerate_adapters(wgpu::Backends::all())
-            .into_iter()
-            .map(|adapter| DnetServiceGPUProperties {
-                name: adapter.get_info().name.to_string(),
-                kind: match adapter.get_info().device_type {
-                    wgpu::DeviceType::Other => "Other".to_string(),
-                    wgpu::DeviceType::IntegratedGpu => "Integrated".to_string(),
-                    wgpu::DeviceType::DiscreteGpu => "Discrete".to_string(),
-                    wgpu::DeviceType::VirtualGpu => "Virtual".to_string(),
-                    wgpu::DeviceType::Cpu => "CPU".to_string(),
-                },
-            })
-            .collect();
+        // let gpus = gpuinfo
+        //     .enumerate_adapters(wgpu::Backends::all())
+        //     .into_iter()
+        //     .map(|adapter| DnetServiceGPUProperties {
+        //         name: adapter.get_info().name.to_string(),
+        //         kind: match adapter.get_info().device_type {
+        //             wgpu::DeviceType::Other => "Other".to_string(),
+        //             wgpu::DeviceType::IntegratedGpu => "Integrated".to_string(),
+        //             wgpu::DeviceType::DiscreteGpu => "Discrete".to_string(),
+        //             wgpu::DeviceType::VirtualGpu => "Virtual".to_string(),
+        //             wgpu::DeviceType::Cpu => "CPU".to_string(),
+        //         },
+        //     })
+        //     .collect();
 
-        let cpus = sysinfo
-            .cpus()
-            .iter()
-            .map(|cpu| DnetServiceCPUProperties {
-                brand: cpu.brand().to_string(),
-            })
-            .collect();
+        // let cpus = sysinfo
+        //     .cpus()
+        //     .iter()
+        //     .map(|cpu| DnetServiceCPUProperties {
+        //         brand: cpu.brand().to_string(),
+        //     })
+        //     .collect();
 
-        let mem = DnetServiceMemoryProperties {
-            avail: sysinfo.available_memory(),
-            free: sysinfo.free_memory(),
-            total: sysinfo.total_memory(),
-        };
+        // let mem = DnetServiceMemoryProperties {
+        //     avail: sysinfo.available_memory(),
+        //     free: sysinfo.free_memory(),
+        //     total: sysinfo.total_memory(),
+        // };
         let mut props = Self {
             // cant be busy at the start
             is_busy: false,
-            mem,
-            cpus,
-            gpus,
+            // mem,
+            // cpus,
+            // gpus,
             is_manager,
-            hostname,
+            // hostname,
             instance,
             address,
             protocol,
@@ -122,10 +121,10 @@ impl DnetServiceProperties {
     }
 
     /// Repopulates the properties with the given [`sysinfo::System`] instance.
-    pub fn refresh_sysinfo(&mut self, sysinfo: &sysinfo::System) {
-        self.mem.avail = sysinfo.available_memory();
-        self.mem.free = sysinfo.free_memory();
-        self.mem.total = sysinfo.total_memory();
+    pub fn refresh_sysinfo(&mut self, _sysinfo: &sysinfo::System) {
+        // self.mem.avail = sysinfo.available_memory();
+        // self.mem.free = sysinfo.free_memory();
+        // self.mem.total = sysinfo.total_memory();
     }
 }
 
