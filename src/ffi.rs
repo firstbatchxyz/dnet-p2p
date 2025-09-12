@@ -24,6 +24,7 @@ type DnetServiceHandle = JoinHandle<eyre::Result<()>>;
 /// Enables logging for `dnet_p2p` while respecting
 /// the `RUST_LOG` environment variable.
 ///
+///
 /// ---
 /// C/C++ declaration:
 /// ```c
@@ -184,6 +185,7 @@ pub unsafe extern "C" fn dnet_p2p_stop(
 /// This function returns a pointer to a `DnetServiceProperties` struct, which contains the properties of the service.
 /// The properties are populated from the service's internal state.
 ///
+///
 /// ---
 /// C/C++ declaration:
 /// ```c
@@ -229,6 +231,7 @@ pub unsafe extern "C" fn dnet_p2p_get_properties(
 ///
 /// This function updates the `is_busy` property of the service and refreshes the mDNS service
 /// if the service is not in passive mode.
+///
 ///
 /// ---
 /// C/C++ declaration:
