@@ -8,10 +8,8 @@ import sys
 def main():
     is_manager = "-m" in sys.argv
     is_passive = "-p" in sys.argv
-    instance = token_hex(8)
+    instance = token_hex(12)
     hostname = gethostname()
-    address = "<none>"  # dummy values
-    protocol = "<none>"  # dummy values
 
     if is_passive:
         print(f"Starting passive monitor {instance} at {hostname}")
@@ -25,8 +23,9 @@ def main():
         dnet.create_instance(
             instance,
             hostname,
-            address,
-            protocol,
+            "localhost",  # host
+            8080,  # server_port
+            50501,  # shard_port
             is_manager=is_manager,
             is_passive=is_passive,
         )
@@ -39,7 +38,7 @@ def main():
                 if is_manager:
                     properties = dnet.get_properties()
                     print(f"Properties: {properties}")
-                sleep(1)
+                sleep(5)
         except KeyboardInterrupt:
             print("Stopping dnet service...")
     pass

@@ -15,21 +15,13 @@ pub struct DnetService {
     pub cancellation: CancellationToken,
     /// A mapping of services from their `fullname` to their last-seen properties.
     pub peer_props: HashMap<String, DnetServiceProperties>,
-    /// A system information object to monitor resources & CPUs.
-    pub(crate) sysinfo: sysinfo::System,
-    /// A `wpgu` instance to retrieve GPU information.
-    pub(crate) gpuinfo: wgpu::Instance,
     /// A shared service properties object.
     ///
     /// This is published via mDNS to all other services.
     pub(crate) properties: DnetServiceProperties,
     /// mDNS service daemon.
     pub(crate) mdns: ServiceDaemon,
-    /// The instance name of this service.
-    ///
-    /// If multiple instances exist, the new one will have a number appended to it,
-    /// e.g. `foobar`, `foobar (2)`, etc.
-    pub(crate) instance: String,
+
     /// Name of the host this service is running on.
     ///
     /// Usually retrieved from `gethostname` syscall,
@@ -48,45 +40,36 @@ impl DnetService {
         cancellation: CancellationToken,
         instance: String,
         hostname: String,
-        address: String,
-        protocol: String,
+        host: String,
+        server_port: u16,
+        shard_port: u16,
         is_manager: bool,
         is_passive: bool,
     ) -> eyre::Result<Self> {
-        // sysinfo
-        let mut sysinfo = sysinfo::System::new_all();
-        sysinfo.refresh_cpu_all();
-
-        // gpuinfo
-        let gpuinfo = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
         let properties = DnetServiceProperties::new(
-            &sysinfo,
-            &gpuinfo,
             is_manager,
-            hostname.clone(),
             instance.clone(),
-            address.clone(),
-            protocol.clone(),
+            host.clone(),
+            server_port,
+            shard_port,
         );
 
+        let mdns = ServiceDaemon::new().wrap_err("failed to create mDNS service daemon")?;
         Ok(Self {
             cancellation,
-            sysinfo,
-            gpuinfo,
             peer_props: HashMap::new(),
             properties,
-            mdns: ServiceDaemon::new().wrap_err("failed to create mDNS service daemon")?,
-            instance,
+            mdns,
             hostname,
-            fullname: String::new(), // will be set after registration
             is_manager,
             is_passive,
+            fullname: String::new(), // will be set after registration
         })
     }
     /// Starts the service with mDNS daemon.
     pub async fn start(&mut self) -> eyre::Result<()> {
         // create an interval to refresh properties
-        const PROPERTY_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
+        const PROPERTY_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(120);
         let mut property_refresh_interval = tokio::time::interval(PROPERTY_REFRESH_INTERVAL);
         property_refresh_interval.tick().await; // wait for the first tick
 
@@ -233,15 +216,13 @@ impl DnetService {
         if !self.is_passive {
             self.mdns_unregister().await;
         }
+
         self.mdns_shutdown().await;
     }
 
-    /// Refreshes the system information and updates the properties.
+    /// Updates the properties on mDNS.
     #[inline]
     async fn handle_property_refresh(&mut self) -> eyre::Result<()> {
-        self.sysinfo.refresh_all();
-        self.properties.refresh_sysinfo(&self.sysinfo);
-
         // only update mDNS service if not passive
         if !self.is_passive {
             self.mdns_update_service().await;
@@ -250,14 +231,14 @@ impl DnetService {
         Ok(())
     }
 
-    /// Sets the busy status of the service and updates mDNS if not passive.
+    /// Sets the busy status of the service and updates mDNS.
     pub async fn set_is_busy(&mut self, is_busy: bool) {
-        self.properties.is_busy = is_busy;
-
-        // only update mDNS service if not passive
-        if !self.is_passive {
-            self.mdns_update_service().await;
+        // handle no-ops & passive
+        if self.properties.is_busy == is_busy || self.is_passive {
+            return;
         }
+        self.properties.is_busy = is_busy;
+        self.mdns_update_service().await;
 
         log::debug!("Set is_busy to {is_busy}");
     }

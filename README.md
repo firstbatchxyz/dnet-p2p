@@ -29,8 +29,6 @@ Here we describe both running from Rust and from C/C++.
 >
 > You may have to change that back from <kbd>Settings > Sharing > Local hostname</kbd>.
 
-### Worker
-
 The default mode is to run as a worker with a given instance name.
 
 ```sh
@@ -44,6 +42,12 @@ cargo run -i <instance> -m
 ```
 
 Note that there can only be one manager at a time.
+
+Finally, you can monitor other devices by running as a passive device:
+
+```sh
+cargo run -i <instance> -p
+```
 
 ### FFI from C/C++
 
@@ -62,10 +66,10 @@ See an example at [`main.py`](./example/py/main.py) that you can run with:
 
 ```sh
 # worker
-uv run main.py
+RUST_LOG=info uv run main.py
 
 # manager
-uv run main.py -m
+RUST_LOG=info uv run main.py -m
 ```
 
 ### Discovering with [dns-sd](https://man.netbsd.org/dns-sd.1)

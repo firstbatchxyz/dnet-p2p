@@ -50,8 +50,9 @@ async fn main() -> eyre::Result<()> {
         cancellation,
         instance_name,
         hostname,
-        "<none>".to_string(), // we dont care about the address in this example
-        "<none>".to_string(), // we dont care about the protocol in this example
+        "localhost".to_string(), // we dont care about the address in this example
+        8080,                    // dummy HTTP server port
+        50501,                   // dummy shard port
         args.is_manager,
         args.is_passive,
     )?;

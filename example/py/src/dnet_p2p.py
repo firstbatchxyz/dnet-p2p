@@ -11,39 +11,16 @@ from pathlib import Path
 from pydantic import BaseModel
 
 
-class DnetServiceMemoryProperties(BaseModel):
-    """Model representing memory properties of a dnet service."""
-
-    avail: int  # Available memory in bytes
-    total: int  # Total memory in bytes
-    free: int  # Free memory in bytes
-
-
-class DnetServiceCPUProperties(BaseModel):
-    """Model representing CPU properties of a dnet service."""
-
-    brand: str
-
-
-class DnetServiceGPUProperties(BaseModel):
-    """Model representing GPU properties of a dnet service."""
-
-    name: str
-    kind: str
-
-
 class DnetDeviceProperties(BaseModel):
     """Model representing the properties of a dnet device."""
 
-    # mem: DnetServiceMemoryProperties
-    # cpus: list[DnetServiceCPUProperties]
-    # gpus: list[DnetServiceGPUProperties]
-    address: str
-    protocol: str
     is_manager: bool
     is_busy: bool
-    # hostname: str
     instance: str
+
+    host: str
+    server_port: int
+    shard_port: int
 
 
 class DnetP2PError(Exception):
@@ -66,7 +43,8 @@ class DnetP2P:
 
         Args:
             library_path: Optional path to the shared library. If not provided,
-                         will attempt to find the library automatically.
+                         will attempt to find the library automatically from
+                         relative `lib` folder.
         """
         self._lib = self._load_library(library_dir)
         self._setup_function_signatures()
@@ -120,10 +98,11 @@ class DnetP2P:
         self._lib.dnet_p2p_new.argtypes = [
             ctypes.c_char_p,  # instance
             ctypes.c_char_p,  # hostname
-            ctypes.c_char_p,  # address
-            ctypes.c_char_p,  # protocol
-            ctypes.c_int,  # is_manager
-            ctypes.c_int,  # is_passive
+            ctypes.c_char_p,  # host
+            ctypes.c_uint16,  # server_port
+            ctypes.c_uint16,  # shard_port
+            ctypes.c_bool,  # is_manager
+            ctypes.c_bool,  # is_passive
         ]
         self._lib.dnet_p2p_new.restype = ctypes.c_void_p
 
@@ -167,8 +146,9 @@ class DnetP2P:
         self,
         instance: str,
         hostname: str,
-        address: str,
-        protocol: str,
+        host: str,
+        server_port: int,
+        shard_port: int,
         is_manager: bool = False,
         is_passive: bool = False,
     ):
@@ -178,7 +158,9 @@ class DnetP2P:
         Args:
             instance: Name of the dnet instance
             hostname: Hostname to bind to, e.g. from `gethostname()` system call
-            address: Address that the instance has a service on.
+            host: Host address for the service
+            server_port: Port number for the HTTP server
+            shard_port: Port number for the shard service
             is_manager: If `True`, the instance will run in manager mode,
                        otherwise in worker mode
             is_passive: If `True`, the instance will only monitor (not register to mDNS)
@@ -191,16 +173,16 @@ class DnetP2P:
 
         instance_bytes = instance.encode("utf-8")
         hostname_bytes = hostname.encode("utf-8")
-        address_bytes = address.encode("utf-8")
-        protocol_bytes = protocol.encode("utf-8")
+        host_bytes = host.encode("utf-8")
 
         self._service_ptr = self._lib.dnet_p2p_new(
             instance_bytes,
             hostname_bytes,
-            address_bytes,
-            protocol_bytes,
-            1 if is_manager else 0,
-            1 if is_passive else 0,
+            host_bytes,
+            server_port,
+            shard_port,
+            is_manager,
+            is_passive,
         )
 
         if self._service_ptr is None:
@@ -341,6 +323,7 @@ class DnetP2P:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit - clean up resources."""
+        del exc_type, exc_val, exc_tb  # Unused parameters
         self.free_instance()
 
     def __del__(self):
