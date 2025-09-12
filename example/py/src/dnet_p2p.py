@@ -1,6 +1,8 @@
 """
 Python FFI wrapper for dnet-p2p library.
 This module provides a Python interface to the dnet-p2p C library using ctypes.
+
+See: https://github.com/firstbatchxyz/dnet-p2p
 """
 
 import ctypes
