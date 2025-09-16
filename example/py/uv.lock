@@ -12,9 +12,9 @@ wheels = [
 ]
 
 [[package]]
-name = "py"
+name = "dnet-p2p"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "pydantic" },
 ]
