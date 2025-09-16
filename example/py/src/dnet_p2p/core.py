@@ -45,6 +45,7 @@ class DnetP2P:
         self._setup_function_signatures()
         self._service_ptr = None
         self._handle_ptr = None
+        self._instance_name = None
 
     def _load_library(self, library_dir: str) -> ctypes.CDLL:
         """Load the dnet-p2p shared library.
@@ -82,6 +83,14 @@ class DnetP2P:
             raise DnetP2PError(
                 f"Failed to load library from {library_path}: {e}"
             ) from e
+
+    def instance_name(self) -> str:
+        """Get the name of the current device's instance name.
+
+        Raises an error if the instance is not created yet."""
+        if self._instance_name is None:
+            raise DnetP2PError("Instance not created yet.")
+        return self._instance_name
 
     def _setup_function_signatures(self):
         """Set up function signatures for type safety."""
@@ -179,6 +188,9 @@ class DnetP2P:
             is_manager,
             is_passive,
         )
+
+        # also store own instance name
+        self._instance_name = instance
 
         if self._service_ptr is None:
             raise DnetP2PError("Failed to create dnet instance")
