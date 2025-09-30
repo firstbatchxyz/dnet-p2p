@@ -3,42 +3,14 @@ use serde::{Deserialize, Serialize};
 use serde_txtrecord::{from_txt_records, to_txt_records};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DnetServiceCPUProperties {
-    /// Brand of the CPU.
-    pub brand: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DnetServiceGPUProperties {
-    /// Name of the GPU.
-    pub name: String,
-    /// Type of the GPU, e.g. "Integrated" or "Dedicated".
-    pub kind: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DnetServiceMemoryProperties {
-    /// Amount of available memory in RAM, in bytes.
-    ///
-    /// On top of `free_memory`, this is the amount of memory that can be re-used as well.
-    pub avail: u64,
-    /// Amount of free memory in RAM, in bytes.
-    ///
-    /// In Windows / FreeBSD this is the same as `avail`.
-    pub free: u64,
-    /// Total amount of memory in RAM, in bytes.
-    pub total: u64,
-}
-
 /// A collection of metrics about a service instance.
 ///
 /// - Can be converted to/from JSON via [`serde_json`].
 /// - Can be converted to/from TXT records via [`serde_txtrecord`].
 ///
-/// NOTE: We are not using `repr(C)` in particular, because we are interested in a hashmap
-/// where this struct is the value, and the keys are strings (peer ids). So the natural
-/// thing to do is to serialize this to a JSON string to pass via FFI.
+/// NOTE: We are not using [`repr(C)`](https://doc.rust-lang.org/nomicon/other-reprs.html#reprc) in particular,
+/// because we are interested in a hashmap where this struct is the value, and the keys are strings (peer ids).
+/// So the natural thing to do is to serialize this to a JSON string to pass via FFI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DnetServiceProperties {
     /// Whether this service is a manager or not.
@@ -57,8 +29,12 @@ pub struct DnetServiceProperties {
     /// Host address of the service, e.g. "127.0.0.1".
     pub host: String,
     /// HTTP server port for this device.
+    ///
+    /// Can be used as `{host}:{server_port}` to reach the HTTP API.
     pub server_port: u16,
     /// Shard port for this device, can be using a custom socket protocol or gRPC.
+    ///
+    /// Can be used as `{host}:{shard_port}` to reach the shard service.
     pub shard_port: u16,
 }
 

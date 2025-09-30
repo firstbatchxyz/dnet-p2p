@@ -1,3 +1,7 @@
+"""
+Core classes for DnetP2P library.
+"""
+
 import ctypes
 import json
 import platform
@@ -272,7 +276,7 @@ class DnetP2P:
             buffer_size: Size of the buffer to allocate for properties data. (default: 2048)
 
         Returns:
-            bytes: The properties data returned by the service
+            dict[str, DnetDeviceProperties]: A dictionary mapping service names to their properties.
 
         Raises:
             DnetP2PError: If no instance is created or if the operation fails

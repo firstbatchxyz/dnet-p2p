@@ -6,6 +6,12 @@ See: https://github.com/firstbatchxyz/dnet-p2p
 """
 
 from .core import DnetP2P, DnetP2PError, DnetDeviceProperties
+from .manifest import load_manifest, merge_device_mappings
 
-
-__all__ = ["DnetP2P", "DnetP2PError", "DnetDeviceProperties"]
+__all__ = [
+    "DnetP2P",
+    "DnetP2PError",
+    "DnetDeviceProperties",
+    "load_manifest",
+    "merge_device_mappings",
+]
