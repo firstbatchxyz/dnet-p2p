@@ -6,12 +6,18 @@ See: https://github.com/firstbatchxyz/dnet-p2p
 """
 
 from .core import DnetP2P, DnetP2PError, DnetDeviceProperties
-from .manifest import load_manifest, merge_device_mappings
+from .manual import load_manual_devices, merge_device_mappings
+from .thunderbolt import ThunderboltData, ThunderboltInstance
 
 __all__ = [
+    ## core.py
     "DnetP2P",
     "DnetP2PError",
     "DnetDeviceProperties",
-    "load_manifest",
+    ## manual.py
+    "load_manual_devices",
     "merge_device_mappings",
+    ## thunderbolt.py
+    "ThunderboltData",
+    "ThunderboltInstance",
 ]

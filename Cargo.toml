@@ -28,7 +28,7 @@ futures = "0.3.30"
 # service discovery
 mdns-sd = "0.13.6"
 gethostname = "1.0.2"
-
+local-ip-address = "0.6.5"
 
 # serialization
 serde_json = "1.0"

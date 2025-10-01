@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use serde_txtrecord::{from_txt_records, to_txt_records};
 use std::collections::HashMap;
 
+use crate::service::ThunderboltData;
+
 /// A collection of metrics about a service instance.
 ///
 /// - Can be converted to/from JSON via [`serde_json`].
@@ -36,12 +38,16 @@ pub struct DnetServiceProperties {
     ///
     /// Can be used as `{host}:{shard_port}` to reach the shard service.
     pub shard_port: u16,
+    /// Local IP address of the service, e.g. "192.168.1.2".
+    ///
+    /// This can be used to reach the service from other devices in the same network.
+    pub local_ip: String,
+    /// Thunderbolt-related connection information, if any.
+    pub thunderbolt: Option<ThunderboltData>,
 }
 
 impl DnetServiceProperties {
     /// Creates a new instance of [`ServiceProperties`] with the given [`sysinfo::System`] instance.
-    ///
-    /// [`Self::refresh_sysinfo`] is called immediately to populate the memory properties.
     pub fn new(
         is_manager: bool,
         instance: String,
@@ -49,6 +55,10 @@ impl DnetServiceProperties {
         server_port: u16,
         shard_port: u16,
     ) -> Self {
+        // get local ip address
+        let local_ip = local_ip_address::local_ip().unwrap(); // FIXME: handle error
+        debug_assert!(local_ip.is_ipv4(), "expected IPv4 address");
+
         Self {
             is_busy: false,
             is_manager,
@@ -56,7 +66,14 @@ impl DnetServiceProperties {
             host,
             server_port,
             shard_port,
+            local_ip: local_ip.to_string(),
+            thunderbolt: None,
         }
+    }
+
+    /// Detects if there is a Thunderbolt connection and updates the properties accordingly.
+    pub fn detect_thunderbolt(&mut self) {
+        todo!() // FIXME: !!!
     }
 }
 

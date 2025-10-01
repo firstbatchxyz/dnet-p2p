@@ -8,3 +8,7 @@ pub use properties::DnetServiceProperties;
 
 /// mDNS specific functions.
 mod mdns;
+
+/// Thunderbolt-specific info.
+mod thunderbolt;
+pub use thunderbolt::ThunderboltData;

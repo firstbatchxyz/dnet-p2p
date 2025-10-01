@@ -1,5 +1,16 @@
 """
-Device manifest option to allow the user to specify devices from file.
+Utility to allow a user to specify a list of devices manually via a JSON file.
+
+This is expected to be used in conjunction with the mDNS discovery, and the two lists
+will be merged together, prioritizing the manually specified devices in case of
+duplicates.
+
+This makes sense for API in particular, instead of shards. The API can discover other devices
+via mDNS etc. and can combine them with the manually specified devices. Shards, on the other hand,
+are expected to be run in more controlled environments, and typically do not need to know about
+other devices beyond the ones they are directly communicating with (e.g., an API server).
+
+The API can run the solver etc. to later let the shards know about the manually given devices, if needed.
 """
 
 import json
@@ -8,7 +19,7 @@ from pathlib import Path
 from .core import DnetDeviceProperties
 
 
-def load_manifest(path: str | Path) -> dict[str, DnetDeviceProperties]:
+def load_manual_devices(path: str | Path) -> dict[str, DnetDeviceProperties]:
     """
     Load DnetDeviceProperties instances from a JSON file.
 
@@ -31,43 +42,43 @@ def load_manifest(path: str | Path) -> dict[str, DnetDeviceProperties]:
     path = Path(path)
 
     if not path.exists():
-        raise FileNotFoundError(f"Manifest file not found: {path}")
+        raise FileNotFoundError(f"Device list file not found: {path}")
 
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     if not isinstance(data, list):
-        raise ValueError("Manifest JSON must be an array of device properties")
+        raise ValueError("Device list must be a JSON array of device properties")
 
     devices = {}
     for entry in data:
         try:
             device = DnetDeviceProperties(**entry)
-            devices[f"manifest_{device.instance}"] = device
+            devices[f"manual_{device.instance}"] = device
         except Exception as e:
-            raise ValueError(f"Invalid device entry in manifest: {entry}") from e
+            raise ValueError(f"Invalid device entry: {entry}") from e
 
     return devices
 
 
 def merge_device_mappings(
     via_mdns: dict[str, DnetDeviceProperties],
-    via_manifest: dict[str, DnetDeviceProperties],
+    via_manual: dict[str, DnetDeviceProperties],
 ) -> dict[str, DnetDeviceProperties]:
     """
-    Merge multiple mappings of DnetDeviceProperties, prioritizing the entries in `via_manifest` over
+    Merge multiple mappings of DnetDeviceProperties, prioritizing the entries in `via_manual` over
     those in `via_mdns`. To detect duplicates, the `instance` and `host` fields are used as the unique identifier.
 
     Args:
         via_mdns: Existing mapping of device names to properties discovered via mDNS
-        via_manifest: New mapping of device names to properties loaded from a manifest file
+        via_manual: New mapping of device names to properties loaded from a devices file
 
     Returns:
         dict[str, DnetDeviceProperties]: A dictionary mapping device names to their properties
     """
 
-    # get device keys based on (instance, host) tuples from the manifest
-    devices = via_manifest.copy()
+    # get device keys based on (instance, host) tuples from the manual list
+    devices = via_manual.copy()
 
     # create a set of existing (instance, host) tuples to detect duplicates
     device_keys = {(device.instance, device.host) for device in via_mdns.values()}

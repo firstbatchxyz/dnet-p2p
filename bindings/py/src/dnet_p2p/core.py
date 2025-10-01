@@ -6,8 +6,11 @@ import ctypes
 import json
 import platform
 from pathlib import Path
+from typing import Optional
 
 from pydantic import BaseModel
+
+from .thunderbolt import ThunderboltData
 
 
 class DnetDeviceProperties(BaseModel):
@@ -20,6 +23,9 @@ class DnetDeviceProperties(BaseModel):
     host: str
     server_port: int
     shard_port: int
+    local_ip: str
+
+    thunderbolt: Optional[ThunderboltData] = None
 
 
 class DnetP2PError(Exception):
