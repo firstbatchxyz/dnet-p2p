@@ -6,7 +6,6 @@ import sys
 
 
 def main():
-    print("Running dnet-p2p example")
     is_manager = "-m" in sys.argv
     is_passive = "-p" in sys.argv
     instance = token_hex(12)
@@ -38,7 +37,10 @@ def main():
             while True:
                 if is_manager:
                     properties = dnet.get_properties()
-                    print(f"Properties: {properties}")
+                    for service, properties in properties.items():
+                        print(
+                            f"Service: {service}:\n{properties.model_dump_json(indent=2)}"
+                        )
                 sleep(5)
         except KeyboardInterrupt:
             print("Stopping dnet service...")

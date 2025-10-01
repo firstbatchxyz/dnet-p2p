@@ -102,6 +102,14 @@ class DnetP2P:
             raise DnetP2PError("Instance not created yet.")
         return self._instance_name
 
+    def fullname(self) -> str:
+        """Get the full mDNS service name of the current device."""
+        instance = self.instance_name()
+
+        # note that this is hardcoded w.r.t dnet service type
+        # see: https://github.com/firstbatchxyz/dnet-p2p/blob/master/src/service/mdns.rs#L20
+        return f"{instance}._dnet_p2p._tcp.local."
+
     def _setup_function_signatures(self):
         """Set up function signatures for type safety."""
         # dnet_p2p_enable_logs
@@ -273,7 +281,7 @@ class DnetP2P:
         return self._service_ptr is not None
 
     def get_properties(
-        self, buffer_size: int = 2048
+        self, buffer_size: int = 4096
     ) -> dict[str, DnetDeviceProperties]:
         """
         Get the properties of the dnet service.
