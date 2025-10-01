@@ -59,7 +59,7 @@ impl DnetServiceProperties {
         let local_ip = local_ip_address::local_ip().unwrap(); // FIXME: handle error
         debug_assert!(local_ip.is_ipv4(), "expected IPv4 address");
 
-        Self {
+        let mut service = Self {
             is_busy: false,
             is_manager,
             instance,
@@ -68,12 +68,22 @@ impl DnetServiceProperties {
             shard_port,
             local_ip: local_ip.to_string(),
             thunderbolt: None,
-        }
+        };
+
+        // post-creation checks
+        service.detect_thunderbolt();
+
+        service
     }
 
     /// Detects if there is a Thunderbolt connection and updates the properties accordingly.
+    ///
+    /// Only works on macOS.
     pub fn detect_thunderbolt(&mut self) {
-        todo!() // FIXME: !!!
+        #[cfg(target_os = "macos")]
+        {
+            self.thunderbolt = ThunderboltData::new_from_profile();
+        }
     }
 }
 

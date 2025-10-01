@@ -6,6 +6,7 @@ import sys
 
 
 def main():
+    print("Running dnet-p2p example")
     is_manager = "-m" in sys.argv
     is_passive = "-p" in sys.argv
     instance = token_hex(12)

@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use tokio::process::Command;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThunderboltInstance {
@@ -61,6 +60,8 @@ impl ThunderboltData {
                 if let Some(name) = item["_name"].as_str() {
                     // FIXME: we are specifically checking a static name here, but
                     // a power-user might have changed the value of this one
+                    //
+                    // nevertheless, this is the default name on MacOS usually
                     if name == "Thunderbolt Bridge" {
                         ip_addrs =
                             serde_json::from_value(item["ip_address"].clone()).unwrap_or_default();
@@ -74,14 +75,8 @@ impl ThunderboltData {
         let mut instances = Vec::new();
         if let Some(thunderbolt_array) = json["SPThunderboltDataType"].as_array() {
             for item in thunderbolt_array.iter() {
-                // extract info about myself
-
-                // extract info about
-                // Extract the `domain_uuid_key` for this port as the key
                 if let Some(myself) = ThunderboltInstance::from_value(item) {
                     let mut connected_devices = Vec::new();
-
-                    // Check if this port has connected devices in `_items`
                     if let Some(items_array) = item["_items"].as_array() {
                         for connected_item in items_array.iter() {
                             if let Some(instance) = ThunderboltInstance::from_value(connected_item)
@@ -91,7 +86,6 @@ impl ThunderboltData {
                         }
                     }
 
-                    // Insert the port with its connected devices (empty if no connections)
                     instances.push((myself, connected_devices));
                 }
             }
@@ -103,14 +97,17 @@ impl ThunderboltData {
         })
     }
 
-    pub async fn new_from_profile() -> Option<Self> {
+    /// Detects if there is a Thunderbolt connection and returns the information.
+    ///
+    /// Uses `system_profiler` command, only works on **macOS**.
+    pub fn new_from_profile() -> Option<Self> {
+        log::debug!("Detecting Thunderbolt information via system_profiler");
         // execute `system_profiler SPNetworkDataType SPThunderboltDataType -json` and read output
-        let output = Command::new("system_profiler")
+        let output = std::process::Command::new("system_profiler")
             .arg("SPNetworkDataType") // for ips
             .arg("SPThunderboltDataType") // for domain_uuids and connections
             .arg("-json")
             .output()
-            .await
             .expect("failed to execute process"); // FIXME: !!!
 
         if !output.status.success() {
@@ -120,10 +117,6 @@ impl ThunderboltData {
             );
             None
         } else {
-            // println!(
-            //     "Thunderbolt profile output:\n\n{}",
-            //     String::from_utf8_lossy(&output.stdout)
-            // );
             Self::new_from_slice(&output.stdout)
         }
     }
@@ -133,15 +126,16 @@ impl ThunderboltData {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn test_thunderbolt_info() {
-        let tb_info = ThunderboltData::new_from_profile().await;
+    #[test]
+    #[ignore = "run manually"]
+    fn test_thunderbolt_info_from_device() {
+        let tb_info = ThunderboltData::new_from_profile();
         println!("{:#?}", tb_info);
         assert!(tb_info.is_some());
     }
 
     #[test]
-    fn test_ports_parsing_with_sample_data() {
+    fn test_thunderbolt_info_from_sample() {
         let sample_json = r#"{
     "SPThunderboltDataType": [
     {
@@ -427,13 +421,11 @@ mod tests {
   }
   "#;
 
-        let tb_info = ThunderboltData::new_from_slice(sample_json.as_bytes()).unwrap();
-        println!("{:#?}", tb_info);
+        let tb_info = ThunderboltData::new_from_slice(sample_json.as_bytes());
+        assert!(tb_info.is_some());
 
-        // print JSON
-        println!("{}", serde_json::to_string_pretty(&tb_info).unwrap());
-
-        // print TXT record
-        println!("{:#?}", serde_txtrecord::to_txt_records(&tb_info).unwrap());
+        // println!("{:#?}", tb_info);
+        // println!("{}", serde_json::to_string_pretty(&tb_info).unwrap());
+        // println!("{:#?}", serde_txtrecord::to_txt_records(&tb_info).unwrap());
     }
 }

@@ -29,25 +29,20 @@ Here we describe both running from Rust and from C/C++.
 >
 > You may have to change that back from <kbd>Settings > Sharing > Local hostname</kbd>.
 
-The default mode is to run as a worker with a given instance name.
+You can run as follows:
 
 ```sh
-cargo run -i <instance>
-```
+# worker
+cargo run
 
-You can register as a manager as well:
+# manager
+cargo run -m
 
-```sh
-cargo run -i <instance> -m
+# passive, just monitors others
+cargo run -p
 ```
 
 Note that there can only be one manager at a time.
-
-Finally, you can monitor other devices by running as a passive device:
-
-```sh
-cargo run -i <instance> -p
-```
 
 ### FFI from C/C++
 
