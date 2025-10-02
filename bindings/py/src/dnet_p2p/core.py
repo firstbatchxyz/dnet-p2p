@@ -6,26 +6,18 @@ import ctypes
 import json
 import platform
 from pathlib import Path
-from typing import Optional
 
-from pydantic import BaseModel
-
-from .thunderbolt import ThunderboltData
+from .properties import RawProperties
+from .thunderbolt import ThunderboltProperties
 
 
-class DnetDeviceProperties(BaseModel):
-    """Model representing the properties of a dnet device."""
+class DnetDeviceProperties(ThunderboltProperties, RawProperties):
+    """DnetDeviceProperties, merged from:
+    - `RawProperties` (host, ip etc.)
+    - `ThunderboltProperties` (thunderbolt connections)
+    """
 
-    is_manager: bool
-    is_busy: bool
-    instance: str
-
-    host: str
-    server_port: int
-    shard_port: int
-    local_ip: str
-
-    thunderbolt: Optional[ThunderboltData] = None
+    pass
 
 
 class DnetP2PError(Exception):

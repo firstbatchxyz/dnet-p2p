@@ -36,11 +36,12 @@ def main():
         try:
             while True:
                 if is_manager:
-                    properties = dnet.get_properties()
+                    properties = dnet.get_properties(buffer_size=12000)
                     for service, properties in properties.items():
                         print(
                             f"Service: {service}:\n{properties.model_dump_json(indent=2)}"
                         )
+                print("=" * 80)
                 sleep(5)
         except KeyboardInterrupt:
             print("Stopping dnet service...")

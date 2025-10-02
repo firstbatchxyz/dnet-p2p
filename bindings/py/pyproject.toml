@@ -1,6 +1,6 @@
 [project]
 name = "dnet-p2p"
-version = "0.1.1"
+version = "0.1.2"
 description = "Python FFI wrapper for dnet-p2p library"
 authors = [{ name = "erhant", email = "erhan@dria.co" }]
 requires-python = ">=3.10"
@@ -14,3 +14,8 @@ Issues = "https://github.com/firstbatchxyz/dnet-p2p/issues"
 [build-system]
 requires = ["uv_build>=0.8.17,<0.9.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+]

@@ -7,12 +7,18 @@ See: https://github.com/firstbatchxyz/dnet-p2p
 
 from .core import DnetP2P, DnetP2PError, DnetDeviceProperties
 from .manual import load_manual_devices, merge_device_mappings
-from .thunderbolt import ThunderboltData, ThunderboltInstance
+from .thunderbolt import (
+    ThunderboltData,
+    ThunderboltInstance,
+    discover_thunderbolt_connections,
+)
 
 __all__ = [
     ## core.py
     "DnetP2P",
     "DnetP2PError",
+    "DnetDeviceProperties",
+    # properties.py
     "DnetDeviceProperties",
     ## manual.py
     "load_manual_devices",
@@ -20,4 +26,5 @@ __all__ = [
     ## thunderbolt.py
     "ThunderboltData",
     "ThunderboltInstance",
+    "discover_thunderbolt_connections",
 ]
