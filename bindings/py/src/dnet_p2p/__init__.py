@@ -18,8 +18,6 @@ __all__ = [
     "DnetP2P",
     "DnetP2PError",
     "DnetDeviceProperties",
-    # properties.py
-    "DnetDeviceProperties",
     ## manual.py
     "load_manual_devices",
     "merge_device_mappings",
