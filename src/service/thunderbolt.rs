@@ -1,4 +1,5 @@
 use crate::utils::get_bridge_ip;
+use eyre::OptionExt;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,8 +52,8 @@ pub struct ThunderboltData {
 // FIXME: how to learn which domain_uuid belongs to which host?
 
 impl ThunderboltData {
-    pub fn new_from_slice(data: &[u8]) -> Option<Self> {
-        let json: serde_json::Value = serde_json::from_slice(data).expect("failed to parse JSON");
+    pub fn new_from_slice(data: &[u8]) -> eyre::Result<Self> {
+        let json: serde_json::Value = serde_json::from_slice(data)?;
 
         // extract thunder ip addresses from network information
         let mut ip_addr: Option<String> = None;
@@ -64,15 +65,15 @@ impl ThunderboltData {
                     //
                     // nevertheless, this is the default name on MacOS usually
                     if name == "Thunderbolt Bridge" {
-                        ip_addr =
-                            serde_json::from_value(item["ip_address"].clone()).unwrap_or_default();
+                        let ip_addresses: Vec<String> =
+                            serde_json::from_value(item["ip_address"].clone())?;
+                        ip_addr = ip_addresses.first().cloned();
                         break;
                     }
                 }
             }
         }
-        // unwrap if found
-        let ip_addr = ip_addr?;
+        let ip_addr = ip_addr.ok_or_eyre("Could not find Thunderbolt Bridge IP address")?;
 
         // as a sanity check, compare it to the IP from the bridge0 interface
         if let Some((_, bridge_ip)) = get_bridge_ip() {
@@ -103,28 +104,26 @@ impl ThunderboltData {
             }
         }
 
-        Some(Self { ip_addr, instances })
+        Ok(Self { ip_addr, instances })
     }
 
     /// Detects if there is a Thunderbolt connection and returns the information.
     ///
     /// Uses `system_profiler` command, only works on **macOS**.
-    pub fn new_from_profile() -> Option<Self> {
+    pub fn new_from_profile() -> eyre::Result<Self> {
         log::debug!("Detecting Thunderbolt information via system_profiler");
         // execute `system_profiler SPNetworkDataType SPThunderboltDataType -json` and read output
         let output = std::process::Command::new("system_profiler")
             .arg("SPNetworkDataType") // for ips
             .arg("SPThunderboltDataType") // for domain_uuids and connections
             .arg("-json")
-            .output()
-            .expect("failed to execute process"); // FIXME: !!!
+            .output()?;
 
         if !output.status.success() {
-            log::error!(
+            eyre::bail!(
                 "system_profiler command failed with status: {}",
                 output.status
             );
-            None
         } else {
             Self::new_from_slice(&output.stdout)
         }
@@ -140,7 +139,7 @@ mod tests {
     fn test_thunderbolt_info_from_device() {
         let tb_info = ThunderboltData::new_from_profile();
         println!("{:#?}", tb_info);
-        assert!(tb_info.is_some());
+        assert!(tb_info.is_ok());
     }
 
     #[test]
@@ -431,7 +430,7 @@ mod tests {
   "#;
 
         let tb_info = ThunderboltData::new_from_slice(sample_json.as_bytes());
-        assert!(tb_info.is_some());
+        assert!(tb_info.is_ok());
 
         // println!("{:#?}", tb_info);
         // println!("{}", serde_json::to_string_pretty(&tb_info).unwrap());

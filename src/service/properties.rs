@@ -79,7 +79,16 @@ impl DnetServiceProperties {
     pub fn detect_thunderbolt(&mut self) {
         #[cfg(target_os = "macos")]
         {
-            self.thunderbolt = ThunderboltData::new_from_profile();
+            match ThunderboltData::new_from_profile() {
+                Ok(tb_info) => {
+                    log::info!("Detected Thunderbolt connection: {:#?}", tb_info);
+                    self.thunderbolt = Some(tb_info);
+                }
+                Err(e) => {
+                    log::warn!("Could not detect Thunderbolt connection: {}", e);
+                    self.thunderbolt = None;
+                }
+            }
         }
     }
 }
