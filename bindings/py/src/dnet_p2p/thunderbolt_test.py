@@ -1,7 +1,3 @@
-"""
-Tests for Thunderbolt-related functionality.
-"""
-
 from .thunderbolt import (
     ThunderboltInstance,
     ThunderboltData,
@@ -23,7 +19,7 @@ def test_discover_thunderbolt_connections_basic():
     # Device A has a port with uuid-a-port-1, and it's connected to device B's uuid-b-port-1
     device_a = ThunderboltProperties(
         thunderbolt=ThunderboltData(
-            ip_addrs=[DEVICE_A_IP],
+            ip_addr=DEVICE_A_IP,
             instances=[
                 (
                     ThunderboltInstance(
@@ -42,7 +38,7 @@ def test_discover_thunderbolt_connections_basic():
     # Device B has a port with uuid-b-port-1, and it's connected to device A's uuid-a-port-1
     device_b = ThunderboltProperties(
         thunderbolt=ThunderboltData(
-            ip_addrs=[DEVICE_B_IP],
+            ip_addr=DEVICE_B_IP,
             instances=[
                 (
                     ThunderboltInstance(
@@ -96,7 +92,7 @@ def test_discover_thunderbolt_connections_no_match():
     """Test discovery when devices don't match."""
     device_a = ThunderboltProperties(
         thunderbolt=ThunderboltData(
-            ip_addrs=[DEVICE_A_IP],
+            ip_addr=DEVICE_A_IP,
             instances=[
                 (
                     ThunderboltInstance(uuid="uuid-a", name="port-a", device="DeviceA"),
@@ -108,7 +104,7 @@ def test_discover_thunderbolt_connections_no_match():
 
     device_b = ThunderboltProperties(
         thunderbolt=ThunderboltData(
-            ip_addrs=[DEVICE_B_IP],
+            ip_addr=DEVICE_B_IP,
             instances=[
                 (
                     ThunderboltInstance(uuid="uuid-b", name="port-b", device="DeviceB"),
@@ -132,7 +128,7 @@ def test_discover_thunderbolt_connections_multiple_devices():
     # device A connected to B
     device_a = ThunderboltProperties(
         thunderbolt=ThunderboltData(
-            ip_addrs=[DEVICE_A_IP],
+            ip_addr=DEVICE_A_IP,
             instances=[
                 (
                     ThunderboltInstance(uuid=uuid_a, name="port-a", device="DeviceA"),
@@ -145,7 +141,7 @@ def test_discover_thunderbolt_connections_multiple_devices():
     # device B connected to both A and C
     device_b = ThunderboltProperties(
         thunderbolt=ThunderboltData(
-            ip_addrs=[DEVICE_B_IP],
+            ip_addr=DEVICE_B_IP,
             instances=[
                 (
                     ThunderboltInstance(uuid=uuid_b, name="port-b", device="DeviceB"),
@@ -167,7 +163,7 @@ def test_discover_thunderbolt_connections_multiple_devices():
     # Device C connected to B
     device_c = ThunderboltProperties(
         thunderbolt=ThunderboltData(
-            ip_addrs=[DEVICE_C_IP],
+            ip_addr=DEVICE_C_IP,
             instances=[
                 (
                     ThunderboltInstance(uuid=uuid_c, name="port-c", device="DeviceC"),

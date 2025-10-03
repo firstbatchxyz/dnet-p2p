@@ -54,11 +54,8 @@ impl DnetServiceProperties {
         host: String,
         server_port: u16,
         shard_port: u16,
+        local_ip: String,
     ) -> Self {
-        // get local ip address
-        let local_ip = local_ip_address::local_ip().unwrap(); // FIXME: handle error
-        debug_assert!(local_ip.is_ipv4(), "expected IPv4 address");
-
         let mut service = Self {
             is_busy: false,
             is_manager,
@@ -66,7 +63,7 @@ impl DnetServiceProperties {
             host,
             server_port,
             shard_port,
-            local_ip: local_ip.to_string(),
+            local_ip,
             thunderbolt: None,
         };
 
@@ -117,13 +114,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_properties() {
+    fn test_txt_properties() {
         let props = DnetServiceProperties::new(
             true,
             "localhost".to_string(),
             "127.0.0.1".to_string(),
             8080,
             8081,
+            "192.168.1.2".to_string(),
         );
 
         println!("Service Properties: {:#?}", props.into_txt_properties());

@@ -1,3 +1,4 @@
+use crate::utils::get_bridge_ip;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,7 +36,7 @@ pub struct ThunderboltData {
     /// It can be defined manually by the user, or automatically via DHCP.
     ///
     /// This can be obtained via `SPNetworkDataType` profile.
-    pub ip_addrs: Vec<String>,
+    pub ip_addr: String,
     /// Domain UUIDs of Thunderbolt ports, and their connections.
     ///
     /// Each physical port has a domain UUID.
@@ -54,7 +55,7 @@ impl ThunderboltData {
         let json: serde_json::Value = serde_json::from_slice(data).expect("failed to parse JSON");
 
         // extract thunder ip addresses from network information
-        let mut ip_addrs = Vec::new();
+        let mut ip_addr: Option<String> = None;
         if let Some(network_array) = json["SPNetworkDataType"].as_array() {
             for item in network_array.iter() {
                 if let Some(name) = item["_name"].as_str() {
@@ -63,11 +64,22 @@ impl ThunderboltData {
                     //
                     // nevertheless, this is the default name on MacOS usually
                     if name == "Thunderbolt Bridge" {
-                        ip_addrs =
+                        ip_addr =
                             serde_json::from_value(item["ip_address"].clone()).unwrap_or_default();
                         break;
                     }
                 }
+            }
+        }
+        // unwrap if found
+        let ip_addr = ip_addr?;
+
+        // as a sanity check, compare it to the IP from the bridge0 interface
+        if let Some((_, bridge_ip)) = get_bridge_ip() {
+            if ip_addr != bridge_ip.to_string() {
+                log::warn!(
+                        "Thunderbolt Bridge IP from system_profiler ({ip_addr}) does not match bridge0 interface IP ({bridge_ip})"
+                    );
             }
         }
 
@@ -91,10 +103,7 @@ impl ThunderboltData {
             }
         }
 
-        Some(Self {
-            ip_addrs,
-            instances,
-        })
+        Some(Self { ip_addr, instances })
     }
 
     /// Detects if there is a Thunderbolt connection and returns the information.

@@ -22,8 +22,8 @@ class ThunderboltInstance(BaseModel):
 class ThunderboltData(BaseModel):
     """Model representing Thunderbolt connection information."""
 
-    ip_addrs: List[str]
-    """Thunderbolt IP addresses from the Thunderbolt Bridge interface."""
+    ip_addr: str
+    """Thunderbolt IP address of this device."""
 
     instances: List[Tuple[ThunderboltInstance, List[ThunderboltInstance]]]
     """
@@ -71,11 +71,10 @@ def discover_thunderbolt_connections(
                     for this_instance, _ in this.thunderbolt.instances:
                         if other_connection.uuid == this_instance.uuid:
                             # found a match, use the first IP address of the other device
-                            if other.thunderbolt.ip_addrs:
-                                conns[other_name] = (
-                                    other.thunderbolt.ip_addrs[0],
-                                    other_instance,
-                                )
+                            conns[other_name] = (
+                                other.thunderbolt.ip_addr,
+                                other_instance,
+                            )
                             break
 
         # record connections if there were any

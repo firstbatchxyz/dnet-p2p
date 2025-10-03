@@ -12,6 +12,10 @@ class RawProperties(BaseModel):
     """Instance name, expected to be unique per device, but not enforced."""
 
     host: str
+    """Host that this device is bound to, usually 0.0.0.0."""
     server_port: int
+    """Port that the HTTP server is bound to."""
     shard_port: int
+    """Port that the shard service is bound to."""
     local_ip: str
+    """Local IP address of the device, reach via WiFi etc."""

@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use tokio_util::sync::CancellationToken;
 
 use super::DnetServiceProperties;
+use crate::utils::get_local_network_ip;
 
 /// A `dnet` service.
 ///
@@ -46,12 +47,23 @@ impl DnetService {
         is_manager: bool,
         is_passive: bool,
     ) -> eyre::Result<Self> {
+        let local_ip = match get_local_network_ip() {
+            Some((interface, ip)) => {
+                log::info!("Using local network IP address via {interface}: {ip}");
+                ip
+            }
+            None => {
+                eyre::bail!("Could not determine local network IP address")
+            }
+        };
+
         let properties = DnetServiceProperties::new(
             is_manager,
             instance.clone(),
             host.clone(),
             server_port,
             shard_port,
+            local_ip.to_string(),
         );
 
         let mdns = ServiceDaemon::new().wrap_err("failed to create mDNS service daemon")?;
