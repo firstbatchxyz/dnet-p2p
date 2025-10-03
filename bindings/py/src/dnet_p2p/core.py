@@ -143,6 +143,14 @@ class DnetP2P:
         ]
         self._lib.dnet_p2p_get_properties.restype = ctypes.c_int
 
+        # dnet_p2p_get_own_properties
+        self._lib.dnet_p2p_get_own_properties.argtypes = [
+            ctypes.c_void_p,  # service_ptr
+            ctypes.c_void_p,  # buf
+            ctypes.c_size_t,  # buf_size
+        ]
+        self._lib.dnet_p2p_get_own_properties.restype = ctypes.c_int
+
         # dnet_p2p_set_is_busy
         self._lib.dnet_p2p_set_is_busy.argtypes = [
             ctypes.c_void_p,  # service_ptr
@@ -276,10 +284,10 @@ class DnetP2P:
         self, buffer_size: int = 4096
     ) -> dict[str, DnetDeviceProperties]:
         """
-        Get the properties of the dnet service.
+        Get the properties of discovered peers.
 
         Args:
-            buffer_size: Size of the buffer to allocate for properties data. (default: 2048)
+            buffer_size: Size of the buffer to allocate for properties data. (default: 4096)
 
         Returns:
             dict[str, DnetDeviceProperties]: A dictionary mapping service names to their properties.
@@ -315,6 +323,44 @@ class DnetP2P:
             properties[key] = DnetDeviceProperties.model_validate(value)
 
         return properties
+
+    def get_own_properties(self, buffer_size: int = 4096) -> DnetDeviceProperties:
+        """
+        Get the service's own properties.
+
+        Args:
+            buffer_size: Size of the buffer to allocate for properties data. (default: 4096)
+
+        Returns:
+            DnetDeviceProperties: The service's own properties.
+
+        Raises:
+            DnetP2PError: If no instance is created or if the operation fails
+            UnicodeDecodeError: If the data cannot be decoded with the specified encoding
+            ValidationError: If the properties data does not match the expected format
+        """
+        if self._service_ptr is None:
+            raise DnetP2PError("No instance created.")
+
+        # create a buffer to receive the properties & call
+        buffer = ctypes.create_string_buffer(buffer_size)
+        result = self._lib.dnet_p2p_get_own_properties(
+            self._service_ptr, buffer, buffer_size
+        )
+
+        if result < 0:
+            raise DnetP2PError(
+                f"Failed to get own properties (error code: {result})"
+            )
+
+        # get the buffer up to the first null terminator
+        properties_bytes = buffer.raw.rstrip(b"\x00")
+
+        # deserialize & validate
+        properties_str = properties_bytes.decode("utf-8")
+        properties_json: object = json.loads(properties_str)
+
+        return DnetDeviceProperties.model_validate(properties_json)
 
     def set_is_busy(self, is_busy: bool):
         """

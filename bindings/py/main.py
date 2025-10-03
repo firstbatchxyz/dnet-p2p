@@ -31,9 +31,16 @@ def main():
         )
         dnet.start()
 
-        # sleep a bit
         print("Dnet service started. Press Ctrl+C to stop.")
         try:
+            sleep(1)
+            if not is_manager:
+                # show own properties for shard
+                properties = dnet.get_own_properties()
+                fullname = dnet.fullname()
+                print(fullname)
+                print(properties.model_dump_json(indent=2))
+
             while True:
                 if is_manager:
                     properties = dnet.get_properties(buffer_size=12000)
