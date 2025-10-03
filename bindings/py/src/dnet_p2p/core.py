@@ -1,21 +1,23 @@
+"""
+Core classes for DnetP2P library.
+"""
+
 import ctypes
 import json
 import platform
 from pathlib import Path
 
-from pydantic import BaseModel
+from .properties import RawProperties
+from .thunderbolt import ThunderboltProperties
 
 
-class DnetDeviceProperties(BaseModel):
-    """Model representing the properties of a dnet device."""
+class DnetDeviceProperties(ThunderboltProperties, RawProperties):
+    """DnetDeviceProperties, merged from:
+    - `RawProperties` (host, ip etc.)
+    - `ThunderboltProperties` (thunderbolt connections)
+    """
 
-    is_manager: bool
-    is_busy: bool
-    instance: str
-
-    host: str
-    server_port: int
-    shard_port: int
+    pass
 
 
 class DnetP2PError(Exception):
@@ -91,6 +93,14 @@ class DnetP2P:
         if self._instance_name is None:
             raise DnetP2PError("Instance not created yet.")
         return self._instance_name
+
+    def fullname(self) -> str:
+        """Get the full mDNS service name of the current device."""
+        instance = self.instance_name()
+
+        # note that this is hardcoded w.r.t dnet service type
+        # see: https://github.com/firstbatchxyz/dnet-p2p/blob/master/src/service/mdns.rs#L20
+        return f"{instance}._dnet_p2p._tcp.local."
 
     def _setup_function_signatures(self):
         """Set up function signatures for type safety."""
@@ -263,7 +273,7 @@ class DnetP2P:
         return self._service_ptr is not None
 
     def get_properties(
-        self, buffer_size: int = 2048
+        self, buffer_size: int = 4096
     ) -> dict[str, DnetDeviceProperties]:
         """
         Get the properties of the dnet service.
@@ -272,7 +282,7 @@ class DnetP2P:
             buffer_size: Size of the buffer to allocate for properties data. (default: 2048)
 
         Returns:
-            bytes: The properties data returned by the service
+            dict[str, DnetDeviceProperties]: A dictionary mapping service names to their properties.
 
         Raises:
             DnetP2PError: If no instance is created or if the operation fails

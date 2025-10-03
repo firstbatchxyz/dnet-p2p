@@ -29,40 +29,35 @@ Here we describe both running from Rust and from C/C++.
 >
 > You may have to change that back from <kbd>Settings > Sharing > Local hostname</kbd>.
 
-The default mode is to run as a worker with a given instance name.
+You can run as follows:
 
 ```sh
-cargo run -i <instance>
-```
+# worker
+cargo run
 
-You can register as a manager as well:
+# manager
+cargo run -m
 
-```sh
-cargo run -i <instance> -m
+# passive, just monitors others
+cargo run -p
 ```
 
 Note that there can only be one manager at a time.
 
-Finally, you can monitor other devices by running as a passive device:
-
-```sh
-cargo run -i <instance> -p
-```
-
 ### FFI from C/C++
 
-Include the shared library within your loader step, e.g. `-L some/directory -ldnet_p2p`. Then, include [`dnet_p2p.h`](./example/c/src/dnet_p2p.h) in your code.
+Include the shared library within your loader step, e.g. `-L some/directory -ldnet_p2p`. Then, include [`dnet_p2p.h`](./bindings/c/src/dnet_p2p.h) in your code.
 
 - You can create a new service object with `dnet_p2p_new` which returns you an object pointer, and free it later with `dnet_p2p_free`.
 - You can start the service with `dnet_p2p_start` which returns you a thread handle pointer, and then stop it with `dnet_p2p_stop`.
 
-See the [header file](./example/c/src/dnet_p2p.h) for more specific instructions.
+See the [header file](./bindings/c/src/dnet_p2p.h) for more specific instructions.
 
 ### FFI from Python
 
-A utility class is provided within [`dnet_p2p.py`](./example/py/src/dnet_p2p.py) that wraps the function calls for the shared library using `ctypes`. It provides both context usage (i.e. `with`) and normal usage.
+A utility class is provided within [`dnet_p2p.py`](./bindings/py/src/dnet_p2p.py) that wraps the function calls for the shared library using `ctypes`. It provides both context usage (i.e. `with`) and normal usage.
 
-See an example at [`main.py`](./example/py/main.py) that you can run with:
+See the example usage at [`main.py`](./bindings/py/main.py) that you can run with:
 
 ```sh
 # worker

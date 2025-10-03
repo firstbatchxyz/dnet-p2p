@@ -18,7 +18,7 @@ def main():
     else:
         print(f"Starting worker {instance} at {hostname}")
 
-    with DnetP2P("../../target/release") as dnet:
+    with DnetP2P("../../lib") as dnet:
         dnet.enable_logs()  # enables rust logging
         dnet.create_instance(
             instance,
@@ -36,8 +36,12 @@ def main():
         try:
             while True:
                 if is_manager:
-                    properties = dnet.get_properties()
-                    print(f"Properties: {properties}")
+                    properties = dnet.get_properties(buffer_size=12000)
+                    for service, properties in properties.items():
+                        print(
+                            f"Service: {service}:\n{properties.model_dump_json(indent=2)}"
+                        )
+                    print("=" * 80)
                 sleep(5)
         except KeyboardInterrupt:
             print("Stopping dnet service...")
