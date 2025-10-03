@@ -1,6 +1,6 @@
 use eyre::Context;
 use mdns_sd::{DaemonEvent, ServiceDaemon, ServiceEvent};
-use std::collections::HashMap;
+use std::{collections::HashMap, env};
 use tokio_util::sync::CancellationToken;
 
 use super::DnetServiceProperties;
@@ -34,6 +34,8 @@ pub struct DnetService {
     pub(crate) is_manager: bool,
     /// Whether this service is passive (monitors only, doesn't register to mDNS).
     pub(crate) is_passive: bool,
+    /// How often to refresh the service properties and update mDNS.
+    pub(crate) refresh_timeout: std::time::Duration,
 }
 
 impl DnetService {
@@ -66,6 +68,13 @@ impl DnetService {
             local_ip.to_string(),
         );
 
+        // refresh timeout from env or default
+        let refresh_timeout = env::var("DNET_P2P_REFRESH_TIMEOUT")
+            .ok()
+            .and_then(|val| val.parse::<u64>().ok())
+            .map(std::time::Duration::from_secs)
+            .unwrap_or(std::time::Duration::from_secs(20));
+
         let mdns = ServiceDaemon::new().wrap_err("failed to create mDNS service daemon")?;
         Ok(Self {
             cancellation,
@@ -76,14 +85,15 @@ impl DnetService {
             is_manager,
             is_passive,
             fullname: String::new(), // will be set after registration
+            refresh_timeout,
         })
     }
     /// Starts the service with mDNS daemon.
     pub async fn start(&mut self) -> eyre::Result<()> {
         // create an interval to refresh properties
-        const PROPERTY_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(120);
-        let mut property_refresh_interval = tokio::time::interval(PROPERTY_REFRESH_INTERVAL);
-        property_refresh_interval.tick().await; // wait for the first tick
+
+        let mut refresh_and_update_interval = tokio::time::interval(self.refresh_timeout);
+        refresh_and_update_interval.tick().await; // wait for the first tick
 
         // only register to mDNS if not passive
         if !self.is_passive {
@@ -102,8 +112,8 @@ impl DnetService {
         loop {
             tokio::select! {
               // handle property refresh
-              _ = property_refresh_interval.tick() => {
-                  if let Err(e) = self.handle_property_refresh().await {
+              _ = refresh_and_update_interval.tick() => {
+                  if let Err(e) = self.handle_refresh_and_update().await {
                       log::error!("Failed to refresh properties: {e}");
                   }
               },
@@ -234,7 +244,7 @@ impl DnetService {
 
     /// Updates the properties on mDNS.
     #[inline]
-    async fn handle_property_refresh(&mut self) -> eyre::Result<()> {
+    async fn handle_refresh_and_update(&mut self) -> eyre::Result<()> {
         // only update mDNS service if not passive
         if !self.is_passive {
             self.mdns_update_service().await;
