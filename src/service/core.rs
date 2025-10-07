@@ -73,7 +73,7 @@ impl DnetService {
             .ok()
             .and_then(|val| val.parse::<u64>().ok())
             .map(std::time::Duration::from_secs)
-            .unwrap_or(std::time::Duration::from_secs(20));
+            .unwrap_or(std::time::Duration::from_secs(2));
 
         let mdns = ServiceDaemon::new().wrap_err("failed to create mDNS service daemon")?;
         Ok(Self {
