@@ -100,6 +100,9 @@ impl DnetService {
             self.fullname = self.mdns_register().await?;
         }
 
+        // sleep for 3 seconds to allow mDNS to settle
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
         // browse for services
         let browser = self
             .mdns
@@ -145,7 +148,7 @@ impl DnetService {
 
     /// Handles monitored mDNS events.
     #[inline]
-    async fn handle_monitor_event(&self, event: DaemonEvent) {
+    async fn handle_monitor_event(&mut self, event: DaemonEvent) {
         match event {
             DaemonEvent::Announce(service, interface) => {
                 log::debug!("Service {service} announced at {interface}");
@@ -153,8 +156,26 @@ impl DnetService {
             DaemonEvent::Error(err) => {
                 log::error!("Daemon error: {err}");
             }
+            DaemonEvent::NameChange(name_change) => {
+                let old_name = name_change.original.as_str();
+                let new_name = name_change.new_name.as_str();
+                log::debug!("Service name change: {old_name} -> {new_name}");
+
+                // if our service name was changed due to conflict, update our fullname
+                if old_name == self.fullname {
+                    log::warn!(
+                        "Service name changed from {old_name} to {new_name} due to conflict"
+                    );
+                    self.fullname = new_name.to_string();
+
+                    // also update our own entry in peer_props if it exists
+                    if let Some(props) = self.peer_props.remove(old_name) {
+                        self.peer_props.insert(new_name.to_string(), props);
+                    }
+                }
+            }
             other => {
-                log::trace!("Daemon event: {other:?}");
+                log::info!("Daemon event: {other:?}");
             }
         };
     }

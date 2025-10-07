@@ -103,10 +103,29 @@ impl crate::DnetService {
     /// This is done by re-registering the service with the updated properties,
     /// as noted in [`mdns-sd` documentation](https://docs.rs/mdns-sd/0.13.9/mdns_sd/struct.ServiceDaemon.html#method.register)
     pub(super) async fn mdns_update_service(&self) {
-        if let Err(err) = self.mdns_register().await {
+        // Extract the instance name from the current fullname to avoid conflicts
+        // The fullname format is: "<instance>._dnet_p2p._tcp.local."
+        let instance_from_fullname = self
+            .fullname
+            .strip_suffix(Self::MDNS_SERVICE_TYPE)
+            .unwrap_or(&self.properties.instance);
+
+        let service_info = ServiceInfo::new(
+            Self::MDNS_SERVICE_TYPE,
+            instance_from_fullname,
+            &format!("{}.local.", self.hostname),
+            "",
+            0,
+            &self.properties,
+        )
+        .expect("valid service info")
+        .enable_addr_auto();
+
+        // re-register to update properties
+        if let Err(err) = self.mdns.register(service_info) {
             log::error!("Failed to update mDNS service properties: {err}");
         } else {
-            log::info!("Updated mDNS service properties for {}", self.fullname);
+            log::debug!("Updated mDNS service properties for {}", self.fullname);
         }
     }
 }
