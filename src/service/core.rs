@@ -73,7 +73,7 @@ impl DnetService {
             .ok()
             .and_then(|val| val.parse::<u64>().ok())
             .map(std::time::Duration::from_secs)
-            .unwrap_or(std::time::Duration::from_secs(2));
+            .unwrap_or(std::time::Duration::from_secs(3));
 
         let mdns = ServiceDaemon::new().wrap_err("failed to create mDNS service daemon")?;
         Ok(Self {
@@ -101,7 +101,7 @@ impl DnetService {
         }
 
         // sleep for 3 seconds to allow mDNS to settle
-        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
         // browse for services
         let browser = self
@@ -175,7 +175,7 @@ impl DnetService {
                 }
             }
             other => {
-                log::info!("Daemon event: {other:?}");
+                log::debug!("Daemon event: {other:?}");
             }
         };
     }

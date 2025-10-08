@@ -25,8 +25,9 @@ impl crate::DnetService {
     /// - `hostname`: The hostname of the service, e.g. `john-doe-macbook`
     /// - `service_port`: The port that the [`crate::DnetService`] is listening on.
     ///
-    /// TODO: if the same `instance_name` exists, it will be renamed (e.g. `foo` becomes `foo (2)`, `foo (3)` and so on)
+    /// FIXME: if the same `instance_name` exists, it will be renamed (e.g. `foo` becomes `foo (2)`, `foo (3)` and so on)
     /// so we need to know that and unregister with the correct name.
+    /// However, updating the records also use `mdns_register` so we cant really use duplicate name for such a logic.
     pub(super) async fn mdns_register(&self) -> eyre::Result<String> {
         // register your own hostname
         log::debug!(

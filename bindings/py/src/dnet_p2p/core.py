@@ -5,6 +5,8 @@ Core classes for DnetP2P library.
 import ctypes
 import json
 import platform
+from os import environ
+from typing import Optional
 from pathlib import Path
 
 from .properties import RawProperties
@@ -161,6 +163,9 @@ class DnetP2P:
     def enable_logs(self):
         """
         Enable logging for dnet, respecting the RUST_LOG environment variable.
+
+        If `start` is called with a log level, this function will be called
+        internally.
         """
         self._lib.dnet_p2p_enable_logs()
 
@@ -213,9 +218,14 @@ class DnetP2P:
         if self._service_ptr is None:
             raise DnetP2PError("Failed to create dnet instance")
 
-    def start(self):
+    def start(self, loglevel: Optional[str] = None):
         """
         Start the dnet service.
+
+        Args:
+            loglevel: Optional log level for dnet `RUST_LOG`, one of: "info", "debug", "trace", "warn", "error".
+                      Will override existing `RUST_LOG` environment variable if set.
+                      Will call `enable_logs()` internally.
 
         Raises:
             DnetP2PError: If service is not created or start fails
@@ -230,6 +240,10 @@ class DnetP2P:
 
         if self._handle_ptr is None:
             raise DnetP2PError("Failed to start dnet service")
+
+        if loglevel is not None:
+            environ["RUST_LOG"] = f"warn,dnet_p2p={loglevel}"
+            self.enable_logs()
 
     def stop(self):
         """
