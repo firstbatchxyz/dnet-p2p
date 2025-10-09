@@ -49,11 +49,11 @@ class ThunderboltConnection(BaseModel):
     instance: ThunderboltInstance
     """The Thunderbolt instance of the connected device."""
 
-def discover_thunderbolt_connections(
+def discover_all_thunderbolt_connections(
     devices: Mapping[str, ThunderboltProperties],
 ) -> dict[str, dict[str, ThunderboltConnection]]:
     """
-    Discover Thunderbolt connections based on the given devices.
+    Discover all Thunderbolt connections based on the given devices.
 
     From the given devices, it scans for matching uuids in the Thunderbolt
     instances and builds a mapping of connections.
@@ -76,21 +76,49 @@ def discover_thunderbolt_connections(
             if this_name == other_name:
                 continue  # skip self
 
-            # check if the connected instances of the other devices
-            # have a matching uuid in this device's instances
-            for other_instance, other_connecteds in other.thunderbolt.instances:
-                for other_connection in other_connecteds:
-                    for this_instance, _ in this.thunderbolt.instances:
-                        if other_connection.uuid == this_instance.uuid:
-                            # found a match, use the first IP address of the other device
-                            conns[other_name] = ThunderboltConnection(
-                                ip_addr=other.thunderbolt.ip_addr,
-                                instance=other_instance,
-                            )
-                            break
+            conn = discover_thunderbolt_connection(this, other)
+            if conn:
+                conns[other_name] = conn
 
         # record connections if there were any
         if len(conns) > 0:
             ans[this_name] = conns
 
     return ans
+
+
+def discover_thunderbolt_connection(this: ThunderboltProperties, other: ThunderboltProperties) -> Optional[ThunderboltConnection]:
+    """
+    Discover a Thunderbolt connection between two devices.
+
+    Scans for matching uuids in the Thunderbolt instances of the two devices
+    and returns a `ThunderboltConnection` if a connection is found.
+
+    Args:
+        this: The Thunderbolt properties of the first device.
+        other: The Thunderbolt properties of the second device.
+
+    Returns:
+        A `ThunderboltConnection` if a connection is found, otherwise `None`.
+    """
+    if not this.thunderbolt or not other.thunderbolt:
+        return None  # missing thunderbolt info
+
+    for other_instance, other_connecteds in other.thunderbolt.instances:
+        for other_connection in other_connecteds:
+            for this_instance, _ in this.thunderbolt.instances:
+                if other_connection.uuid == this_instance.uuid:
+                    # found a match!
+
+                    # edge case check: other device could be another shard within the same "machine",
+                    # we can compare both IPs for sanity, to disallow self-thunderbolt connections
+                    if this.thunderbolt.ip_addr == other.thunderbolt.ip_addr:
+                        # same IP, likely the same machine, skip
+                        continue
+
+                    return ThunderboltConnection(
+                        ip_addr=other.thunderbolt.ip_addr,
+                        instance=other_instance,
+                    )
+
+    return None  # no connection found

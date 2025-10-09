@@ -2,7 +2,7 @@ from .thunderbolt import (
     ThunderboltInstance,
     ThunderboltData,
     ThunderboltProperties,
-    discover_thunderbolt_connections,
+    discover_all_thunderbolt_connections,
 )
 
 DEVICE_A_IP = "164.259.0.1"
@@ -57,7 +57,7 @@ def test_discover_thunderbolt_connections_basic():
     devices = {"device-a": device_a, "device-b": device_b}
 
     # Discover connections
-    connections = discover_thunderbolt_connections(devices)
+    connections = discover_all_thunderbolt_connections(devices)
 
     # Both devices should see each other
     assert "device-a" in connections
@@ -65,15 +65,15 @@ def test_discover_thunderbolt_connections_basic():
 
     # Device A should see Device B
     assert "device-b" in connections["device-a"]
-    device_b_ip, device_b_inst = connections["device-a"]["device-b"]
-    assert device_b_ip == DEVICE_B_IP
-    assert device_b_inst.uuid == device_b_uuid
+    device_b_a_conn = connections["device-a"]["device-b"]
+    assert device_b_a_conn.ip_addr == DEVICE_B_IP
+    assert device_b_a_conn.instance.uuid == device_b_uuid
 
     # Device B should see Device A
     assert "device-a" in connections["device-b"]
-    device_a_ip, device_a_inst = connections["device-b"]["device-a"]
-    assert device_a_ip == DEVICE_A_IP
-    assert device_a_inst.uuid == device_a_uuid
+    device_b_a_conn = connections["device-b"]["device-a"]
+    assert device_b_a_conn.ip_addr == DEVICE_A_IP
+    assert device_b_a_conn.instance.uuid == device_a_uuid
 
 
 def test_discover_thunderbolt_connections_no_thunderbolt():
@@ -82,7 +82,7 @@ def test_discover_thunderbolt_connections_no_thunderbolt():
     device_b = ThunderboltProperties(thunderbolt=None)
 
     devices = {"device-a": device_a, "device-b": device_b}
-    connections = discover_thunderbolt_connections(devices)
+    connections = discover_all_thunderbolt_connections(devices)
 
     # No connections should be found
     assert len(connections) == 0
@@ -115,7 +115,7 @@ def test_discover_thunderbolt_connections_no_match():
     )
 
     devices = {"device-a": device_a, "device-b": device_b}
-    connections = discover_thunderbolt_connections(devices)
+    connections = discover_all_thunderbolt_connections(devices)
 
     # No connections should be found
     assert len(connections) == 0
@@ -174,21 +174,21 @@ def test_discover_thunderbolt_connections_multiple_devices():
     )
 
     devices = {"device-a": device_a, "device-b": device_b, "device-c": device_c}
-    connections = discover_thunderbolt_connections(devices)
+    connections = discover_all_thunderbolt_connections(devices)
 
     # Verify connections
     assert len(connections) == 3
 
     # Device A sees B
     assert "device-b" in connections["device-a"]
-    assert connections["device-a"]["device-b"][0] == DEVICE_B_IP
+    assert connections["device-a"]["device-b"].ip_addr == DEVICE_B_IP
 
     # Device B sees both A and C
     assert "device-a" in connections["device-b"]
     assert "device-c" in connections["device-b"]
-    assert connections["device-b"]["device-a"][0] == DEVICE_A_IP
-    assert connections["device-b"]["device-c"][0] == DEVICE_C_IP
+    assert connections["device-b"]["device-a"].ip_addr == DEVICE_A_IP
+    assert connections["device-b"]["device-c"].ip_addr == DEVICE_C_IP
 
     # Device C sees B
     assert "device-b" in connections["device-c"]
-    assert connections["device-c"]["device-b"][0] == DEVICE_B_IP
+    assert connections["device-c"]["device-b"].ip_addr == DEVICE_B_IP
