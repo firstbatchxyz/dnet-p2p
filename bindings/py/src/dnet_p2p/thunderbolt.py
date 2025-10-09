@@ -35,12 +35,23 @@ class ThunderboltData(BaseModel):
 
 
 class ThunderboltProperties(BaseModel):
+    """Model representing Thunderbolt properties of a device.
+    
+    Shall be mixed-in with other device properties."""
     thunderbolt: Optional[ThunderboltData] = None
 
+class ThunderboltConnection(BaseModel):
+    """Model representing a Thunderbolt connection to another device."""
+
+    ip_addr: str
+    """IP address of the connected device."""
+
+    instance: ThunderboltInstance
+    """The Thunderbolt instance of the connected device."""
 
 def discover_thunderbolt_connections(
     devices: Mapping[str, ThunderboltProperties],
-) -> dict[str, dict[str, tuple[str, ThunderboltInstance]]]:
+) -> dict[str, dict[str, ThunderboltConnection]]:
     """
     Discover Thunderbolt connections based on the given devices.
 
@@ -48,7 +59,8 @@ def discover_thunderbolt_connections(
     instances and builds a mapping of connections.
 
     Returns:
-        A map in the form of `service_A_name -> (service_B_name -> (service_B_thunderbolt_ip, service_B_thunderbolt_inst))`.
+        A map in the form of `service_A_name -> (service_B_name -> ThunderboltConnection)`
+        indicating that service A can reach service B via Thunderbolt at the given IP address.
     """
     ans = {}
 
@@ -71,9 +83,9 @@ def discover_thunderbolt_connections(
                     for this_instance, _ in this.thunderbolt.instances:
                         if other_connection.uuid == this_instance.uuid:
                             # found a match, use the first IP address of the other device
-                            conns[other_name] = (
-                                other.thunderbolt.ip_addr,
-                                other_instance,
+                            conns[other_name] = ThunderboltConnection(
+                                ip_addr=other.thunderbolt.ip_addr,
+                                instance=other_instance,
                             )
                             break
 
