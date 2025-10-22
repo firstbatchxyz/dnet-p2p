@@ -1,6 +1,6 @@
 [package]
 name = "dnet-p2p"
-version = "0.1.0"
+version = "0.1.1"
 description = "dnet LAN peer discovery"
 edition = "2021"
 license = "APACHE-2.0"
@@ -25,12 +25,12 @@ eyre = "0.6.12"
 tokio = { version = "1.38", default-features = false, features = ["full"] }
 tokio-util = { version = "0.7" }
 futures = "0.3.30"
-socket2 = "0.6"
 
 # networking
 local-ip-address = "0.6.5"
-serde = { version = "1.0", features = ["derive"] }
+socket2 = "0.6"
 socket-pktinfo = "0.3.2"
 
 # serialization
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

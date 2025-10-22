@@ -77,15 +77,17 @@ def merge_device_mappings(
         dict[str, DnetDeviceProperties]: A dictionary mapping device names to their properties
     """
 
-    # get device keys based on (instance, host) tuples from the manual list
+    # get device keys based on (instance, local_ip) tuples from the manual list
     devices = via_manual.copy()
 
-    # create a set of existing (instance, host) tuples to detect duplicates
-    device_keys = {(device.instance, device.host) for device in via_discovery.values()}
+    # create a set of existing (instance, local_ip) tuples to detect duplicates
+    device_keys = {
+        (device.instance, device.local_ip) for device in via_discovery.values()
+    }
 
     # add non-duplicate devices from the discovery to the existing mapping
     for name, device in via_discovery.items():
-        if (device.instance, device.host) not in device_keys:
+        if (device.instance, device.local_ip) not in device_keys:
             devices[name] = device
 
     return devices

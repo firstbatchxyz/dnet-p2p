@@ -30,7 +30,7 @@ def main():
             is_manager=is_manager,
             is_passive=is_passive,
         )
-        dnet.start(loglevel="debug")
+        dnet.start()
 
         print("Dnet service started. Press Ctrl+C to stop.")
         try:

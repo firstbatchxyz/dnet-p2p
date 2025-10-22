@@ -87,7 +87,9 @@ impl UdpDiscovery {
     pub const DEFAULT_BROADCAST_INTERVAL: u64 = 3;
 
     /// Default peer timeout in seconds
-    pub const DEFAULT_PEER_TIMEOUT: u64 = 10;
+    ///
+    /// Peers not seen within this duration are considered offline, and are dropped.
+    pub const DEFAULT_PEER_TIMEOUT: u64 = Self::DEFAULT_BROADCAST_INTERVAL * 3;
 
     /// Creates a new UDP discovery instance
     pub fn new() -> eyre::Result<Self> {
@@ -340,7 +342,6 @@ pub(crate) fn spawn_udp_task(
     initial_properties: DnetServiceProperties,
     is_passive: bool,
 ) -> eyre::Result<UdpHandle> {
-    // cancellation: CancellationToken,
     // channels
     let (cmd_tx, mut cmd_rx) = mpsc::channel::<UdpCommand>(32);
     let (evt_tx, evt_rx) = mpsc::channel::<UdpEvent>(64);
@@ -367,7 +368,6 @@ pub(crate) fn spawn_udp_task(
             tokio::select! {
                 biased;
 
-
                 // commands from core
                 cmd = cmd_rx.recv() => {
                     match cmd {
@@ -387,7 +387,7 @@ pub(crate) fn spawn_udp_task(
                             }
                         }
                         Some(UdpCommand::Shutdown) => {
-                            log::info!("UDP worker received Shutdown command");
+                            log::info!("UDP worker: received shutdown command");
                             break;
                         }
                         None => {
@@ -437,7 +437,7 @@ pub(crate) fn spawn_udp_task(
             }
         }
 
-        log::info!("UDP worker exiting");
+        log::info!("UDP worker: exiting");
         Ok(())
     });
 
