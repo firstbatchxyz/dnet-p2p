@@ -52,8 +52,7 @@ async fn main() -> eyre::Result<()> {
         50501, // dummy shard port
         args.is_manager,
         args.is_passive,
-    )
-    .await?;
+    )?;
     let handle_for_service = tokio::spawn(async move { service.start().await });
 
     if let Err(err) = handle_for_service.await {

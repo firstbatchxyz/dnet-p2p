@@ -9,7 +9,10 @@ def main():
     is_passive = "-p" in sys.argv
     instance = token_hex(12)
 
-    with DnetP2P("../../lib") as dnet:
+    ## uncomment to your taste ##
+    # with DnetP2P("../../lib") as dnet:
+    with DnetP2P("../../target/debug") as dnet:
+        # with DnetP2P("../../target/release") as dnet:
         # print version
         print(f"dnet-p2p version: {dnet.version()}")
 
@@ -27,7 +30,7 @@ def main():
             is_manager=is_manager,
             is_passive=is_passive,
         )
-        # dnet.start(loglevel="info")
+        dnet.start(loglevel="debug")
 
         print("Dnet service started. Press Ctrl+C to stop.")
         try:

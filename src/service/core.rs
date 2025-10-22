@@ -1,9 +1,10 @@
 use eyre::Context;
 use std::collections::HashMap;
+use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    udp::{UdpDiscovery, UdpMessage},
+    udp::{spawn_udp_task, UdpCommand, UdpEvent, UdpHandle, UdpMessage},
     DnetServiceProperties,
 };
 use crate::utils::get_local_network_ip;
@@ -16,14 +17,14 @@ pub struct DnetService {
     ///
     /// Usually listens to CTRL+C, or any other graceful shutdown on errors.
     pub cancellation: CancellationToken,
-    /// A mapping of services from their `fullname` to their last-seen properties.
+    /// A mapping of services from their `instance` name to their last-seen properties.
     pub peer_props: HashMap<String, DnetServiceProperties>,
     /// A shared service properties object.
     ///
     /// This is published via UDP to all other services.
     pub(crate) properties: DnetServiceProperties,
-    /// UDP discovery instance.
-    pub(crate) udp: UdpDiscovery,
+    /// UDP worker handle and channels.
+    pub(crate) udp_handle: Option<UdpHandle>,
     /// Whether this service is a manager or not.
     pub(crate) is_manager: bool,
     /// Whether this service is passive (monitors only, doesn't register).
@@ -31,7 +32,7 @@ pub struct DnetService {
 }
 
 impl DnetService {
-    pub async fn new(
+    pub fn new(
         cancellation: CancellationToken,
         instance: String,
         server_port: u16,
@@ -57,70 +58,54 @@ impl DnetService {
             local_ip.to_string(),
         );
 
-        let udp = UdpDiscovery::new()
-            .await
-            .wrap_err("failed to create UDP discovery")?;
-
         Ok(Self {
             cancellation,
             peer_props: HashMap::new(),
             properties,
-            udp,
+            udp_handle: None,
             is_manager,
             is_passive,
         })
     }
-    /// Starts the service with UDP discovery.
+    /// Starts the service with UDP discovery worker.
     pub async fn start(&mut self) -> eyre::Result<()> {
-        // create intervals for UDP operations
-        let mut broadcast_interval = tokio::time::interval(self.udp.broadcast_interval);
-        broadcast_interval.tick().await; // wait for the first tick
-
-        let mut cleanup_interval = tokio::time::interval(self.udp.cleanup_interval);
-        cleanup_interval.tick().await; // wait for the first tick
-
+        // spawn UDP worker task
+        let handle = spawn_udp_task(self.properties.clone(), self.is_passive)
+            .wrap_err("failed to spawn UDP worker task")?;
         log::info!(
-            "Starting UDP discovery loop on port {} for instance {}",
-            self.udp.port,
+            "Started UDP worker for instance {}",
             self.properties.instance
         );
+        self.udp_handle = Some(handle);
+
         loop {
-            tokio::select! {
-              // broadcast own properties
-              _ = broadcast_interval.tick() => {
-                  if !self.is_passive {
-                      if let Err(e) = self.udp.broadcast_properties(&self.properties).await {
-                          log::error!("Failed to broadcast properties: {e}");
-                      }
-                  }
-              },
+            // await either an event or cancellation
+            let evt_opt: Option<UdpEvent> = tokio::select! {
+                evt = self
+                        .udp_handle
+                        .as_mut()
+                        .expect("udp_handle set")
+                        .evt_rx
+                        .recv() => evt,
+                _ = self.cancellation.cancelled() => break,
+            };
 
-              // cleanup stale peers
-              _ = cleanup_interval.tick() => {
-                  let timed_out = self.udp.cleanup_stale_peers();
-                  for instance in timed_out {
-                      self.peer_props.remove(&instance);
-                      log::info!("Removed stale peer: {}", instance);
-                  }
-              },
-
-              // receive peer messages (update or remove)
-              message = self.udp.receive_announcement() => {
-                  match message {
-                      Ok(Some((msg, sender_addr))) => {
-                          self.handle_udp_message(msg, sender_addr);
-                      },
-                      Ok(None) => {
-                          // no data available, continue
-                      },
-                      Err(e) => {
-                          log::error!("Error receiving UDP message: {e}");
-                      }
-                  }
-              },
-
-              // graceful shutdown
-              _ = self.cancellation.cancelled() => break,
+            if let Some(evt) = evt_opt {
+                match evt {
+                    UdpEvent::Message(msg, sender_addr) => {
+                        self.handle_udp_message(msg, sender_addr);
+                    }
+                    UdpEvent::PeersTimedOut(timed_out_instances) => {
+                        for instance in timed_out_instances {
+                            self.peer_props.remove(&instance);
+                            log::info!("Removed stale peer: {}", instance);
+                        }
+                    }
+                }
+            } else {
+                // channel closed; break out to stop
+                log::warn!("UDP event channel closed");
+                break;
             }
         }
 
@@ -193,20 +178,46 @@ impl DnetService {
     /// Stops the service gracefully.
     pub async fn stop(&mut self) {
         log::info!("Stopping service gracefully...");
+        if let Some(handle) = self.udp_handle.take() {
+            // broadcast removal notification if not passive
+            if !self.is_passive {
+                log::info!(
+                    "Broadcasting REMOVE notification for instance {}",
+                    self.properties.instance
+                );
+                if let Err(e) = handle
+                    .cmd_tx
+                    .send(UdpCommand::BroadcastRemove(
+                        self.properties.instance.clone(),
+                    ))
+                    .await
+                {
+                    log::error!("Failed to request removal broadcast: {e}");
+                } else {
+                    log::info!("Requested REMOVE notification successfully");
+                }
 
-        // broadcast removal notification if not passive
-        if !self.is_passive {
-            log::info!(
-                "Broadcasting REMOVE notification for instance {}",
-                self.properties.instance
-            );
-            if let Err(e) = self.udp.broadcast_remove(&self.properties.instance).await {
-                log::error!("Failed to broadcast removal notification: {e}");
-            } else {
-                log::info!("REMOVE notification sent successfully");
+                // delay to ensure the removal message is sent before shutdown
+                tokio::time::sleep(Duration::from_millis(1000)).await;
             }
-            // delay to ensure the removal message is sent before we close the socket
-            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+
+            // request shutdown
+            if let Err(e) = handle.cmd_tx.send(UdpCommand::Shutdown).await {
+                log::warn!("UDP worker command channel closed before shutdown: {e}");
+            }
+
+            // wait for worker task to complete
+            match handle.task.await {
+                Ok(Ok(())) => {
+                    log::info!("UDP worker shut down cleanly");
+                }
+                Ok(Err(e)) => {
+                    log::error!("UDP worker returned error: {e}");
+                }
+                Err(e) => {
+                    log::error!("UDP worker join error: {e}");
+                }
+            }
         }
     }
 
@@ -218,8 +229,20 @@ impl DnetService {
         }
         self.properties.is_busy = is_busy;
 
-        // property will be broadcast on next interval
-        // TODO: do the broadcast immediately maybe?
+        // send updated properties to UDP worker and request immediate broadcast
+        if let Some(handle) = self.udp_handle.as_ref() {
+            if let Err(e) = handle
+                .cmd_tx
+                .send(UdpCommand::UpdateProperties(self.properties.clone()))
+                .await
+            {
+                log::warn!("Failed to send UpdateProperties to UDP worker: {e}");
+            }
+            if let Err(e) = handle.cmd_tx.send(UdpCommand::BroadcastNow).await {
+                log::debug!("Failed to request immediate broadcast: {e}");
+            }
+        }
+
         log::debug!("Set is_busy to {is_busy}");
     }
 }

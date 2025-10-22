@@ -8,6 +8,9 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::net::UdpSocket;
+use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
+// use tokio_util::sync::CancellationToken;
 
 use super::DnetServiceProperties;
 
@@ -23,6 +26,35 @@ pub enum UdpMessage {
 impl UdpMessage {
     pub const MSG_TYPE_UPDATE: u8 = b'U';
     pub const MSG_TYPE_REMOVE: u8 = b'R';
+}
+
+/// Commands sent from the core service to the UDP worker task
+#[derive(Debug)]
+pub(crate) enum UdpCommand {
+    /// Immediately broadcast current properties
+    BroadcastNow,
+    /// Replace current properties used by the worker
+    UpdateProperties(DnetServiceProperties),
+    /// Broadcast a graceful removal message for the given instance
+    BroadcastRemove(String),
+    /// Request the worker to shutdown
+    Shutdown,
+}
+
+/// Events sent from the UDP worker to the core service
+#[derive(Debug)]
+pub(crate) enum UdpEvent {
+    /// A parsed UDP message from a peer
+    Message(UdpMessage, SocketAddr),
+    /// List of peers that timed out
+    PeersTimedOut(Vec<String>),
+}
+
+/// Handle for interacting with the UDP worker task
+pub(crate) struct UdpHandle {
+    pub(crate) cmd_tx: mpsc::Sender<UdpCommand>,
+    pub(crate) evt_rx: mpsc::Receiver<UdpEvent>,
+    pub(crate) task: JoinHandle<eyre::Result<()>>,
 }
 
 /// UDP discovery configuration and state
@@ -58,7 +90,7 @@ impl UdpDiscovery {
     pub const DEFAULT_PEER_TIMEOUT: u64 = 10;
 
     /// Creates a new UDP discovery instance
-    pub async fn new() -> eyre::Result<Self> {
+    pub fn new() -> eyre::Result<Self> {
         // load configuration from environment variables
         let port = Self::DEFAULT_PORT;
 
@@ -74,14 +106,16 @@ impl UdpDiscovery {
 
         pkt_socket
             .set_reuse_address(true)
-            .wrap_err("failed to set SO_REUSEADDR")?;
+            .wrap_err("failed to enable address reuse")?;
         #[cfg(unix)] // unix only
         pkt_socket
             .set_reuse_port(true)
-            .wrap_err("failed to set SO_REUSEPORT")?;
+            .wrap_err("failed to enable port reuse")?;
+
+        // FIXME: is this needed? we will run in a separate thread anyways
         pkt_socket
             .set_nonblocking(true)
-            .wrap_err("failed to set non-blocking mode")?;
+            .wrap_err("failed to enable non-blocking mode")?;
 
         // bind
         pkt_socket
@@ -262,6 +296,12 @@ impl UdpDiscovery {
                     // no data available, not an error
                     Ok(None)
                 } else {
+                    log::error!(
+                        "UDP recv_from error: kind={:?}, os_error={:?}, message={}",
+                        e.kind(),
+                        e.raw_os_error(),
+                        e
+                    );
                     Err(e).wrap_err("failed to receive UDP packet")
                 }
             }
@@ -293,4 +333,117 @@ impl UdpDiscovery {
 
         timed_out
     }
+}
+
+/// Spawns the UDP discovery worker task and returns a handle for interaction
+pub(crate) fn spawn_udp_task(
+    initial_properties: DnetServiceProperties,
+    is_passive: bool,
+) -> eyre::Result<UdpHandle> {
+    // cancellation: CancellationToken,
+    // channels
+    let (cmd_tx, mut cmd_rx) = mpsc::channel::<UdpCommand>(32);
+    let (evt_tx, evt_rx) = mpsc::channel::<UdpEvent>(64);
+
+    // create discovery synchronously before spawning so errors bubble up
+    let mut discovery = UdpDiscovery::new().wrap_err("failed to create UDP discovery")?;
+
+    let task: JoinHandle<eyre::Result<()>> = tokio::spawn(async move {
+        let mut properties = initial_properties;
+
+        // timers
+        let mut broadcast_interval = tokio::time::interval(discovery.broadcast_interval);
+        broadcast_interval.tick().await;
+        let mut cleanup_interval = tokio::time::interval(discovery.cleanup_interval);
+        cleanup_interval.tick().await;
+
+        log::info!(
+            "UDP worker started on port {} for instance {}",
+            discovery.port,
+            properties.instance
+        );
+
+        loop {
+            tokio::select! {
+                biased;
+
+
+                // commands from core
+                cmd = cmd_rx.recv() => {
+                    match cmd {
+                        Some(UdpCommand::BroadcastNow) => {
+                            if !is_passive {
+                                if let Err(e) = discovery.broadcast_properties(&properties).await {
+                                    log::error!("UDP worker: broadcast now failed: {e}");
+                                }
+                            }
+                        }
+                        Some(UdpCommand::UpdateProperties(p)) => {
+                            properties = p;
+                        }
+                        Some(UdpCommand::BroadcastRemove(instance)) => {
+                            if let Err(e) = discovery.broadcast_remove(&instance).await {
+                                log::error!("UDP worker: broadcast remove failed: {e}");
+                            }
+                        }
+                        Some(UdpCommand::Shutdown) => {
+                            log::info!("UDP worker received Shutdown command");
+                            break;
+                        }
+                        None => {
+                            // command channel closed by core; exit loop
+                            log::warn!("UDP worker: command channel closed, shutting down");
+                            break;
+                        }
+                    }
+                }
+
+                // periodic broadcast
+                _ = broadcast_interval.tick() => {
+                    if !is_passive {
+                        if let Err(e) = discovery.broadcast_properties(&properties).await {
+                            log::error!("UDP worker: periodic broadcast failed: {e}");
+                        }
+                    }
+                }
+
+                // periodic cleanup
+                _ = cleanup_interval.tick() => {
+                    let timed_out = discovery.cleanup_stale_peers();
+                    if !timed_out.is_empty() {
+                        if let Err(e) = evt_tx.send(UdpEvent::PeersTimedOut(timed_out)).await {
+                            log::debug!("UDP worker: failed to send PeersTimedOut event: {e}");
+                        }
+                    }
+                }
+
+                // socket receive
+                recv = discovery.receive_announcement() => {
+                    match recv {
+                        Ok(Some((msg, addr))) => {
+                            if let Err(e) = evt_tx.send(UdpEvent::Message(msg, addr)).await {
+                                log::debug!("UDP worker: failed to send Message event: {e}");
+                            }
+                        }
+                        Ok(None) => { /* no packet */ }
+                        Err(e) => {
+                            log::error!("UDP worker: receive error: {e}");
+
+                            // brief backoff
+                            tokio::time::sleep(Duration::from_millis(250)).await;
+                        }
+                    }
+                }
+            }
+        }
+
+        log::info!("UDP worker exiting");
+        Ok(())
+    });
+
+    Ok(UdpHandle {
+        cmd_tx,
+        evt_rx,
+        task,
+    })
 }

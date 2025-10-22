@@ -1,12 +1,12 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class RawProperties(BaseModel):
     """Model representing the properties of a dnet device."""
 
-    is_manager: bool
+    is_manager: bool = Field(default=False)
     """Indicates that the device is manager (usually the API)."""
-    is_busy: bool
+    is_busy: bool = Field(default=False)
     """Indicates that the device is busy (e.g. doing an inference)."""
     instance: str
     """Instance name, expected to be unique per device, but not enforced."""

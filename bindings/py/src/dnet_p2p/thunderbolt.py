@@ -3,7 +3,7 @@ Thunderbolt-related classes for DnetP2P library.
 """
 
 from typing import List, Tuple, Optional, Mapping
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ThunderboltInstance(BaseModel):
@@ -36,9 +36,11 @@ class ThunderboltData(BaseModel):
 
 class ThunderboltProperties(BaseModel):
     """Model representing Thunderbolt properties of a device.
-    
+
     Shall be mixed-in with other device properties."""
-    thunderbolt: Optional[ThunderboltData] = None
+
+    thunderbolt: Optional[ThunderboltData] = Field(default=None)
+
 
 class ThunderboltConnection(BaseModel):
     """Model representing a Thunderbolt connection to another device."""
@@ -48,6 +50,7 @@ class ThunderboltConnection(BaseModel):
 
     instance: ThunderboltInstance
     """The Thunderbolt instance of the connected device."""
+
 
 def discover_all_thunderbolt_connections(
     devices: Mapping[str, ThunderboltProperties],
@@ -87,7 +90,9 @@ def discover_all_thunderbolt_connections(
     return ans
 
 
-def discover_thunderbolt_connection(this: ThunderboltProperties, other: ThunderboltProperties) -> Optional[ThunderboltConnection]:
+def discover_thunderbolt_connection(
+    this: ThunderboltProperties, other: ThunderboltProperties
+) -> Optional[ThunderboltConnection]:
     """
     Discover a Thunderbolt connection between two devices.
 
