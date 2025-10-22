@@ -1,4 +1,6 @@
 use eyre::Context;
+// use socket2::Domain;
+use socket_pktinfo::PktInfoUdpSocket;
 use std::{
     collections::HashMap,
     env,
@@ -46,7 +48,8 @@ impl UdpDiscovery {
     const MAGIC_WORD: &'static [u8; 4] = b"dnet";
 
     /// Default UDP port for dnet discovery
-    pub const DEFAULT_PORT: u16 = 0;
+    /// All instances must use the same port for broadcast discovery to work
+    pub const DEFAULT_PORT: u16 = 37021;
 
     /// Default broadcast interval in seconds
     pub const DEFAULT_BROADCAST_INTERVAL: u64 = 3;
@@ -57,36 +60,42 @@ impl UdpDiscovery {
     /// Creates a new UDP discovery instance
     pub async fn new() -> eyre::Result<Self> {
         // load configuration from environment variables
-        let mut port = env::var("DNET_P2P_UDP_PORT")
-            .ok()
-            .and_then(|val| val.parse::<u16>().ok())
-            .unwrap_or(Self::DEFAULT_PORT);
+        let port = Self::DEFAULT_PORT;
 
         let peer_timeout_secs = env::var("DNET_P2P_UDP_PEER_TIMEOUT")
             .ok()
             .and_then(|val| val.parse::<u64>().ok())
             .unwrap_or(Self::DEFAULT_PEER_TIMEOUT);
 
-        // create UDP socket
+        // create UDP socket with SO_REUSEADDR to allow multiple bindings
         let bind_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port);
+        let pkt_socket =
+            PktInfoUdpSocket::new(socket2::Domain::IPV4).wrap_err("failed to create UDP socket")?;
 
-        let socket = UdpSocket::bind(bind_addr)
-            .await
+        pkt_socket
+            .set_reuse_address(true)
+            .wrap_err("failed to set SO_REUSEADDR")?;
+        #[cfg(unix)] // unix only
+        pkt_socket
+            .set_reuse_port(true)
+            .wrap_err("failed to set SO_REUSEPORT")?;
+        pkt_socket
+            .set_nonblocking(true)
+            .wrap_err("failed to set non-blocking mode")?;
+
+        // bind
+        pkt_socket
+            .bind(&bind_addr.into())
             .wrap_err("failed to bind UDP socket")?;
 
-        // get the actual port assigned by the OS (in case port 0 was used)
-        port = socket
-            .local_addr()
-            .wrap_err("failed to get socket local address")?
-            .port();
-
-        // enable broadcast
+        // convert socket2 -> std -> tokio
+        let socket = UdpSocket::from_std(pkt_socket.try_clone_std().unwrap())
+            .wrap_err("failed to convert to tokio socket")?;
         socket
             .set_broadcast(true)
-            .wrap_err("failed to set broadcast on UDP socket")?;
+            .wrap_err("failed to enable broadcast")?;
 
         let broadcast_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::BROADCAST), port);
-
         let broadcast_interval_secs = env::var("DNET_P2P_UDP_BROADCAST_INTERVAL")
             .ok()
             .and_then(|val| val.parse::<u64>().ok())
@@ -231,7 +240,7 @@ impl UdpDiscovery {
                             .to_string();
 
                         log::info!(
-                            "Received REMOVE from instance '{}' at {}",
+                            "Received REMOVE from instance {} (from: {})",
                             instance,
                             sender_addr
                         );

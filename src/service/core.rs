@@ -162,19 +162,13 @@ impl DnetService {
                 if let Some(stored_props) = self.peer_props.get(&instance) {
                     let sender_ip = sender_addr.ip().to_string();
 
-                    log::debug!(
-                        "REMOVE verification - sender IP: '{}', stored local_ip: '{}'",
-                        sender_ip,
-                        stored_props.local_ip
-                    );
-
                     // verify that the sender IP matches the stored peer IP for sanity
                     if stored_props.local_ip == sender_ip {
                         self.peer_props.remove(&instance);
-                        log::info!("✓ Removed peer '{}' (verified IP: {})", instance, sender_ip);
+                        log::info!("Removed {} (from: {})", instance, sender_ip);
                     } else {
                         log::warn!(
-                            "✗ Ignoring REMOVE for '{}' from {} (expected IP: {})",
+                            "Ignoring REMOVE due to IP mismatch {} (from {}, expected IP: {})",
                             instance,
                             sender_ip,
                             stored_props.local_ip
@@ -182,7 +176,7 @@ impl DnetService {
                     }
                 } else {
                     log::warn!(
-                        "Received REMOVE for unknown peer '{}' from {}",
+                        "Received REMOVE for unknown peer {} (from {})",
                         instance,
                         sender_addr
                     );
@@ -203,7 +197,7 @@ impl DnetService {
         // broadcast removal notification if not passive
         if !self.is_passive {
             log::info!(
-                "Broadcasting REMOVE notification for instance '{}'",
+                "Broadcasting REMOVE notification for instance {}",
                 self.properties.instance
             );
             if let Err(e) = self.udp.broadcast_remove(&self.properties.instance).await {
