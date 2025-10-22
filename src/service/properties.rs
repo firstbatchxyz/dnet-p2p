@@ -1,7 +1,7 @@
 use crate::service::ThunderboltData;
 use serde::{Deserialize, Serialize};
 
-/// A collection of metrics about a service instance..
+/// A collection of metrics about a service instance.
 ///
 /// NOTE: We are not using [`repr(C)`](https://doc.rust-lang.org/nomicon/other-reprs.html#reprc) in particular,
 /// because we are interested in a hashmap where this struct is the value, and the keys are strings (peer ids).
