@@ -3,27 +3,31 @@ Thunderbolt-related classes for DnetP2P library.
 """
 
 from typing import List, Tuple, Optional, Mapping
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ThunderboltInstance(BaseModel):
     """Model representing a Thunderbolt instance/device."""
 
-    uuid: str
-    """Domain UUID of the device, from `domain_uuid_key`."""
+    uuid: str = Field(
+        ..., description="Domain UUID of the device, from `domain_uuid_key`."
+    )
 
-    name: str
-    """Name of the connection, e.g. "thunderboltusb4_bus_2" or "Macbook Air", from `_name`."""
+    name: str = Field(
+        ...,
+        description="Name of the connection, e.g. 'thunderboltusb4_bus_2' or 'Macbook Air', from `_name`.",
+    )
 
-    device: str
-    """Human-readable name of the device, e.g. "Mac15,12", from `device_name_key`."""
+    device: str = Field(
+        ...,
+        description="Human-readable name of the device, e.g. 'Mac15,12', from `device_name_key`.",
+    )
 
 
 class ThunderboltData(BaseModel):
     """Model representing Thunderbolt connection information."""
 
-    ip_addr: str
-    """Thunderbolt IP address of this device."""
+    ip_addr: str = Field(..., description="Thunderbolt IP address of this device.")
 
     instances: List[Tuple[ThunderboltInstance, List[ThunderboltInstance]]]
     """
@@ -36,18 +40,21 @@ class ThunderboltData(BaseModel):
 
 class ThunderboltProperties(BaseModel):
     """Model representing Thunderbolt properties of a device.
-    
+
     Shall be mixed-in with other device properties."""
-    thunderbolt: Optional[ThunderboltData] = None
+
+    thunderbolt: Optional[ThunderboltData] = Field(default=None)
+
 
 class ThunderboltConnection(BaseModel):
     """Model representing a Thunderbolt connection to another device."""
 
-    ip_addr: str
-    """IP address of the connected device."""
+    ip_addr: str = Field(..., description="IP address of the connected device.")
 
-    instance: ThunderboltInstance
-    """The Thunderbolt instance of the connected device."""
+    instance: ThunderboltInstance = Field(
+        ..., description="The Thunderbolt instance of the connected device."
+    )
+
 
 def discover_all_thunderbolt_connections(
     devices: Mapping[str, ThunderboltProperties],
@@ -87,7 +94,9 @@ def discover_all_thunderbolt_connections(
     return ans
 
 
-def discover_thunderbolt_connection(this: ThunderboltProperties, other: ThunderboltProperties) -> Optional[ThunderboltConnection]:
+def discover_thunderbolt_connection(
+    this: ThunderboltProperties, other: ThunderboltProperties
+) -> Optional[ThunderboltConnection]:
     """
     Discover a Thunderbolt connection between two devices.
 

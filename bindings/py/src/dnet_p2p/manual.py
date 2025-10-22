@@ -1,12 +1,12 @@
 """
 Utility to allow a user to specify a list of devices manually via a JSON file.
 
-This is expected to be used in conjunction with the mDNS discovery, and the two lists
+This is expected to be used in conjunction with the peer-discovery, and the two lists
 will be merged together, prioritizing the manually specified devices in case of
 duplicates.
 
 This makes sense for API in particular, instead of shards. The API can discover other devices
-via mDNS etc. and can combine them with the manually specified devices. Shards, on the other hand,
+as usual, and can combine them with the manually specified devices. Shards, on the other hand,
 are expected to be run in more controlled environments, and typically do not need to know about
 other devices beyond the ones they are directly communicating with (e.g., an API server).
 
@@ -24,7 +24,7 @@ def load_manual_devices(path: str | Path) -> dict[str, DnetDeviceProperties]:
     Load DnetDeviceProperties instances from a JSON file.
 
     This is mostly useful for the API side, which can take in multiple devices that
-    do not necessarily advertise themselves via mDNS. For example, an AWS instance
+    do not necessarily advertise themselves. For example, an AWS instance
     can be specified via its private IP address from this file, assuming that it is
     running the shard service.
 
@@ -62,30 +62,32 @@ def load_manual_devices(path: str | Path) -> dict[str, DnetDeviceProperties]:
 
 
 def merge_device_mappings(
-    via_mdns: dict[str, DnetDeviceProperties],
+    via_discovery: dict[str, DnetDeviceProperties],
     via_manual: dict[str, DnetDeviceProperties],
 ) -> dict[str, DnetDeviceProperties]:
     """
     Merge multiple mappings of DnetDeviceProperties, prioritizing the entries in `via_manual` over
-    those in `via_mdns`. To detect duplicates, the `instance` and `host` fields are used as the unique identifier.
+    those in `via_discovery`. To detect duplicates, the `instance` and `host` fields are used as the unique identifier.
 
     Args:
-        via_mdns: Existing mapping of device names to properties discovered via mDNS
+        via_discovery: Existing mapping of device names to properties discovered via discovery
         via_manual: New mapping of device names to properties loaded from a devices file
 
     Returns:
         dict[str, DnetDeviceProperties]: A dictionary mapping device names to their properties
     """
 
-    # get device keys based on (instance, host) tuples from the manual list
+    # get device keys based on (instance, local_ip) tuples from the manual list
     devices = via_manual.copy()
 
-    # create a set of existing (instance, host) tuples to detect duplicates
-    device_keys = {(device.instance, device.host) for device in via_mdns.values()}
+    # create a set of existing (instance, local_ip) tuples to detect duplicates
+    device_keys = {
+        (device.instance, device.local_ip) for device in via_discovery.values()
+    }
 
-    # add non-duplicate devices from the mDNS to the existing mapping
-    for name, device in via_mdns.items():
-        if (device.instance, device.host) not in device_keys:
+    # add non-duplicate devices from the discovery to the existing mapping
+    for name, device in via_discovery.items():
+        if (device.instance, device.local_ip) not in device_keys:
             devices[name] = device
 
     return devices

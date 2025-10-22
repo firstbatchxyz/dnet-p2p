@@ -30,21 +30,15 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  // get hostname here with syscall
-  char hostname[256];
-  if (gethostname(hostname, sizeof(hostname)) != 0) {
-    perror("gethostname");
-    return 1;
-  }
-
   // enable logging for dnet, respecting RUST_LOG env variable
   dnet_p2p_enable_logs();
 
   // create dnet instance
   const char *instance_name = argv[1];
 
-  dnet_p2p_t *dnet_p2p =
-      dnet_p2p_new(instance_name, hostname, "localhost" /* host */, 8080 /* server_port */, 50501 /* shard_port */, false /* not manager */, false /* not passive */);
+  dnet_p2p_t *dnet_p2p = dnet_p2p_new(
+      instance_name /* host */, 8080 /* server_port */, 50501 /* shard_port */,
+      false /* not manager */, false /* not passive */);
   if (!dnet_p2p) {
     fprintf(stderr, "Failed to create dnet instance\n");
     return 1;

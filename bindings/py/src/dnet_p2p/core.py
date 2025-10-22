@@ -6,7 +6,7 @@ import ctypes
 import json
 import platform
 from os import environ
-from typing import Optional
+from typing import Optional, Literal
 from pathlib import Path
 
 from .properties import RawProperties
@@ -96,16 +96,12 @@ class DnetP2P:
             raise DnetP2PError("Instance not created yet.")
         return self._instance_name
 
-    def fullname(self) -> str:
-        """Get the full mDNS service name of the current device."""
-        instance = self.instance_name()
-
-        # note that this is hardcoded w.r.t dnet service type
-        # see: https://github.com/firstbatchxyz/dnet-p2p/blob/master/src/service/mdns.rs#L20
-        return f"{instance}._dnet_p2p._tcp.local."
-
     def _setup_function_signatures(self):
         """Set up function signatures for type safety."""
+        # dnet_p2p_version
+        self._lib.dnet_p2p_version.argtypes = []
+        self._lib.dnet_p2p_version.restype = ctypes.c_char_p
+
         # dnet_p2p_enable_logs
         self._lib.dnet_p2p_enable_logs.argtypes = []
         self._lib.dnet_p2p_enable_logs.restype = None
@@ -113,8 +109,6 @@ class DnetP2P:
         # dnet_p2p_new
         self._lib.dnet_p2p_new.argtypes = [
             ctypes.c_char_p,  # instance
-            ctypes.c_char_p,  # hostname
-            ctypes.c_char_p,  # host
             ctypes.c_uint16,  # server_port
             ctypes.c_uint16,  # shard_port
             ctypes.c_bool,  # is_manager
@@ -160,6 +154,16 @@ class DnetP2P:
         ]
         self._lib.dnet_p2p_set_is_busy.restype = None
 
+    def version(self) -> str:
+        """
+        Get the version of the dnet-p2p library.
+
+        Returns:
+            str: The version string (e.g., "0.1.0")
+        """
+        version_bytes = self._lib.dnet_p2p_version()
+        return version_bytes.decode("utf-8")
+
     def enable_logs(self):
         """
         Enable logging for dnet, respecting the RUST_LOG environment variable.
@@ -172,8 +176,6 @@ class DnetP2P:
     def create_instance(
         self,
         instance: str,
-        hostname: str,
-        host: str,
         server_port: int,
         shard_port: int,
         is_manager: bool = False,
@@ -184,13 +186,12 @@ class DnetP2P:
 
         Args:
             instance: Name of the dnet instance
-            hostname: Hostname to bind to, e.g. from `gethostname()` system call
             host: Host address for the service
             server_port: Port number for the HTTP server
             shard_port: Port number for the shard service
             is_manager: If `True`, the instance will run in manager mode,
                        otherwise in worker mode
-            is_passive: If `True`, the instance will only monitor (not register to mDNS)
+            is_passive: If `True`, the instance will only monitor (not register itself)
 
         Raises:
             DnetP2PError: If instance creation fails
@@ -199,13 +200,9 @@ class DnetP2P:
             raise DnetP2PError("Instance already created. Call free_instance() first.")
 
         instance_bytes = instance.encode("utf-8")
-        hostname_bytes = hostname.encode("utf-8")
-        host_bytes = host.encode("utf-8")
 
         self._service_ptr = self._lib.dnet_p2p_new(
             instance_bytes,
-            hostname_bytes,
-            host_bytes,
             server_port,
             shard_port,
             is_manager,
@@ -218,12 +215,15 @@ class DnetP2P:
         if self._service_ptr is None:
             raise DnetP2PError("Failed to create dnet instance")
 
-    def start(self, loglevel: Optional[str] = None):
+    def start(
+        self,
+        loglevel: Optional[Literal["info", "debug", "trace", "warn", "error"]] = None,
+    ):
         """
         Start the dnet service.
 
         Args:
-            loglevel: Optional log level for dnet `RUST_LOG`, one of: "info", "debug", "trace", "warn", "error".
+            loglevel: Optional log level for dnet `RUST_LOG`.
                       Will override existing `RUST_LOG` environment variable if set.
                       Will call `enable_logs()` internally.
 
@@ -378,7 +378,7 @@ class DnetP2P:
         """
         Set the busy status of the service.
 
-        This updates the is_busy property of the service and refreshes mDNS
+        This updates the `is_busy` property of the service,
         if the service is not in passive mode.
 
         Args:

@@ -21,6 +21,22 @@ use crate::DnetService;
 /// Type that is returned by [`dnet_p2p_start`].
 type DnetServiceHandle = JoinHandle<eyre::Result<()>>;
 
+/// Returns the version of the `dnet_p2p` library.
+///
+/// The returned string is a static string literal and does not need to be freed.
+///
+/// ---
+/// C/C++ declaration:
+/// ```c
+/// extern const char* dnet_p2p_version(void);
+/// ```
+#[unsafe(no_mangle)]
+pub extern "C" fn dnet_p2p_version() -> *const ffi::c_char {
+    // The version is compiled in from Cargo.toml via CARGO_PKG_VERSION
+    const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "\0");
+    VERSION.as_ptr() as *const ffi::c_char
+}
+
 /// Enables logging for `dnet_p2p` while respecting
 /// the `RUST_LOG` environment variable.
 ///
@@ -52,8 +68,6 @@ pub extern "C" fn dnet_p2p_enable_logs() {
 /// ```c
 /// extern dnet_p2p_t* dnet_p2p_new(
 ///   const char* instance,
-///   const char* hostname,
-///   const char* host,
 ///   uint16_t server_port,
 ///   uint16_t shard_port,
 ///   bool is_manager,
@@ -63,33 +77,28 @@ pub extern "C" fn dnet_p2p_enable_logs() {
 #[unsafe(no_mangle)]
 pub extern "C" fn dnet_p2p_new(
     instance_c: *const ffi::c_char,
-    hostname_c: *const ffi::c_char,
-    host_c: *const ffi::c_char,
     server_port: u16,
     shard_port: u16,
     is_manager: bool,
     is_passive: bool,
 ) -> *mut DnetService {
-    let [instance, hostname, host] = [instance_c, hostname_c, host_c].map(|ptr| {
-        unsafe {
-            assert!(!ptr.is_null());
-            ffi::CStr::from_ptr(ptr)
-        }
-        .to_str()
-        .unwrap()
-    });
+    let instance = unsafe {
+        assert!(!instance_c.is_null());
+        ffi::CStr::from_ptr(instance_c)
+    }
+    .to_str()
+    .expect("could not convert instance to str");
 
     let service = DnetService::new(
         CancellationToken::new(),
         instance.to_string(),
-        hostname.to_string(),
-        host.to_string(),
         server_port,
         shard_port,
         is_manager,
         is_passive,
     )
     .expect("Failed to create DnetService");
+
     Box::into_raw(Box::new(service))
 }
 
@@ -276,7 +285,7 @@ pub unsafe extern "C" fn dnet_p2p_get_own_properties(
 
 /// Sets the busy status of the service.
 ///
-/// This function updates the `is_busy` property of the service and refreshes the mDNS service
+/// This function updates the `is_busy` property of the service and refreshes the discovery service
 /// if the service is not in passive mode.
 ///
 ///

@@ -1,9 +1,12 @@
 use eyre::Context;
-use mdns_sd::{DaemonEvent, ServiceDaemon, ServiceEvent};
-use std::{collections::HashMap, env};
+use std::collections::HashMap;
+use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 
-use super::DnetServiceProperties;
+use super::{
+    udp::{spawn_udp_task, UdpCommand, UdpEvent, UdpHandle, UdpMessage},
+    DnetServiceProperties,
+};
 use crate::utils::get_local_network_ip;
 
 /// A `dnet` service.
@@ -14,36 +17,24 @@ pub struct DnetService {
     ///
     /// Usually listens to CTRL+C, or any other graceful shutdown on errors.
     pub cancellation: CancellationToken,
-    /// A mapping of services from their `fullname` to their last-seen properties.
+    /// A mapping of services from their `instance` name to their last-seen properties.
     pub peer_props: HashMap<String, DnetServiceProperties>,
     /// A shared service properties object.
     ///
-    /// This is published via mDNS to all other services.
+    /// This is published via UDP to all other services.
     pub(crate) properties: DnetServiceProperties,
-    /// mDNS service daemon.
-    pub(crate) mdns: ServiceDaemon,
-
-    /// Name of the host this service is running on.
-    ///
-    /// Usually retrieved from `gethostname` syscall,
-    /// or provided manually.
-    pub(crate) hostname: String,
-    /// The full name of the service.
-    pub(crate) fullname: String,
+    /// UDP worker handle and channels.
+    pub(crate) udp_handle: Option<UdpHandle>,
     /// Whether this service is a manager or not.
     pub(crate) is_manager: bool,
-    /// Whether this service is passive (monitors only, doesn't register to mDNS).
+    /// Whether this service is passive (monitors only, doesn't register).
     pub(crate) is_passive: bool,
-    /// How often to refresh the service properties and update mDNS.
-    pub(crate) refresh_timeout: std::time::Duration,
 }
 
 impl DnetService {
     pub fn new(
         cancellation: CancellationToken,
         instance: String,
-        hostname: String,
-        host: String,
         server_port: u16,
         shard_port: u16,
         is_manager: bool,
@@ -62,83 +53,59 @@ impl DnetService {
         let properties = DnetServiceProperties::new(
             is_manager,
             instance.clone(),
-            host.clone(),
             server_port,
             shard_port,
             local_ip.to_string(),
         );
 
-        // refresh timeout from env or default
-        let refresh_timeout = env::var("DNET_P2P_REFRESH_TIMEOUT")
-            .ok()
-            .and_then(|val| val.parse::<u64>().ok())
-            .map(std::time::Duration::from_secs)
-            .unwrap_or(std::time::Duration::from_secs(3));
-
-        let mdns = ServiceDaemon::new().wrap_err("failed to create mDNS service daemon")?;
         Ok(Self {
             cancellation,
             peer_props: HashMap::new(),
             properties,
-            mdns,
-            hostname,
+            udp_handle: None,
             is_manager,
             is_passive,
-            fullname: String::new(), // will be set after registration
-            refresh_timeout,
         })
     }
-    /// Starts the service with mDNS daemon.
+    /// Starts the service with UDP discovery worker.
     pub async fn start(&mut self) -> eyre::Result<()> {
-        // create an interval to refresh properties
-
-        let mut refresh_and_update_interval = tokio::time::interval(self.refresh_timeout);
-        refresh_and_update_interval.tick().await; // wait for the first tick
-
-        // only register to mDNS if not passive
-        if !self.is_passive {
-            self.fullname = self.mdns_register().await?;
-        }
-
-        // sleep for 3 seconds to allow mDNS to settle
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-
-        // browse for services
-        let browser = self
-            .mdns
-            .browse(Self::MDNS_SERVICE_TYPE)
-            .wrap_err("failed to browse services")?;
-
-        // monitor the daemon for events
-        let monitor = self.mdns.monitor().wrap_err("could not monitor mdns")?;
+        // spawn UDP worker task
+        let handle = spawn_udp_task(self.properties.clone(), self.is_passive)
+            .wrap_err("failed to spawn UDP worker task")?;
+        log::info!(
+            "Started UDP worker for instance {}",
+            self.properties.instance
+        );
+        self.udp_handle = Some(handle);
 
         loop {
-            tokio::select! {
-              // handle property refresh
-              _ = refresh_and_update_interval.tick() => {
-                  if let Err(e) = self.handle_refresh_and_update().await {
-                      log::error!("Failed to refresh properties: {e}");
-                  }
-              },
+            // await either an event or cancellation
+            let evt_opt: Option<UdpEvent> = tokio::select! {
+                evt = self
+                        .udp_handle
+                        .as_mut()
+                        .expect("udp_handle set")
+                        .evt_rx
+                        .recv() => evt,
+                _ = self.cancellation.cancelled() => break,
+            };
 
-              // monitor browse events
-              event_res = browser.recv_async() => {
-                  match event_res {
-                      Ok(event) => self.handle_browse_event(event),
-                      Err(err) => log::error!("Error receiving event: {err}"),
-                  };
-              },
-
-              // monitor mDNS events
-              event_res = monitor.recv_async() => {
-                  match event_res {
-                      Ok(event) => self.handle_monitor_event(event).await,
-                      Err(err) => log::error!("Error receiving event: {err}"),
-                };
-              },
-
-              // graceful shutdown
-              _ = self.cancellation.cancelled() => break,
+            if let Some(evt) = evt_opt {
+                match evt {
+                    UdpEvent::Message(msg, sender_addr) => {
+                        self.handle_udp_message(msg, sender_addr);
+                    }
+                    UdpEvent::PeersTimedOut(timed_out_instances) => {
+                        for instance in timed_out_instances {
+                            self.peer_props.remove(&instance);
+                            log::info!("Removed stale peer: {}", instance);
+                        }
+                    }
+                }
+            } else {
+                // channel closed; break out to stop
+                log::warn!("UDP event channel closed");
+                break;
             }
         }
 
@@ -146,105 +113,60 @@ impl DnetService {
         Ok(())
     }
 
-    /// Handles monitored mDNS events.
+    /// Handles a UDP message from a peer (Update or Remove)
     #[inline]
-    async fn handle_monitor_event(&mut self, event: DaemonEvent) {
-        match event {
-            DaemonEvent::Announce(service, interface) => {
-                log::debug!("Service {service} announced at {interface}");
-            }
-            DaemonEvent::Error(err) => {
-                log::error!("Daemon error: {err}");
-            }
-            DaemonEvent::NameChange(name_change) => {
-                let old_name = name_change.original.as_str();
-                let new_name = name_change.new_name.as_str();
-                log::debug!("Service name change: {old_name} -> {new_name}");
-
-                // if our service name was changed due to conflict, update our fullname
-                if old_name == self.fullname {
-                    log::warn!(
-                        "Service name changed from {old_name} to {new_name} due to conflict"
-                    );
-                    self.fullname = new_name.to_string();
-
-                    // also update our own entry in peer_props if it exists
-                    if let Some(props) = self.peer_props.remove(old_name) {
-                        self.peer_props.insert(new_name.to_string(), props);
-                    }
-                }
-            }
-            other => {
-                log::debug!("Daemon event: {other:?}");
-            }
-        };
-    }
-
-    /// Handles an mDNS service browse event.
-    ///
-    /// If a service for `dnet` is resolved, it will be added to the list of known peers to this service.
-    #[inline]
-    fn handle_browse_event(&mut self, event: ServiceEvent) {
-        match event {
-            ServiceEvent::ServiceResolved(info) => {
-                let fullname = info.get_fullname();
-
-                // ignore non-dnet services
-                if !fullname.ends_with(Self::MDNS_SERVICE_TYPE) {
-                    log::trace!("Ignoring service {fullname}, not a dnet service");
-                    return;
-                }
+    fn handle_udp_message(&mut self, message: UdpMessage, sender_addr: std::net::SocketAddr) {
+        match message {
+            UdpMessage::Update(properties) => {
+                let instance = properties.instance.clone();
 
                 // check if this is us (only relevant if not passive)
-                if !self.is_passive && fullname == self.fullname {
-                    log::debug!("Resolved our own service: {fullname}");
-
-                    // update yourself in peer props, this is to "act" like you discovered
-                    // yourself, even if the props were updated anyways
+                if !self.is_passive && instance == self.properties.instance {
+                    log::debug!("Received our own announcement from {}", sender_addr);
+                    // update yourself in peer props
                     self.peer_props
-                        .insert(fullname.to_string(), self.properties.clone());
+                        .insert(instance.clone(), self.properties.clone());
                     return;
                 }
 
-                if let Some(addr) = info
-                    .get_addresses_v4()
-                    .iter()
-                    // get the first address that is private (belongs to the local network)
-                    .find(|addr| addr.is_private())
-                {
-                    log::info!(
-                        "{fullname} resolved at host {} listening on {addr}",
-                        info.get_hostname(),
-                    );
+                log::debug!("Processing UPDATE from {}: {:#?}", instance, properties);
 
-                    let properties = match DnetServiceProperties::try_from(info.get_properties()) {
-                        Ok(props) => props,
-                        Err(e) => {
-                            log::error!(
-                                "Failed to parse properties for {}: {e}",
-                                info.get_fullname()
-                            );
-                            return;
-                        }
-                    };
-                    log::debug!("{properties:#?}");
+                // check if we are both a manager
+                if self.is_manager && properties.is_manager {
+                    log::error!("Found another manager {instance} at {sender_addr}, ignoring...");
+                } else {
+                    // add peer to the peer properties
+                    self.peer_props.insert(instance.clone(), properties);
+                    log::info!("Added/updated peer: {}", instance);
+                }
+            }
+            UdpMessage::Remove(instance) => {
+                log::info!("Processing REMOVE for instance: {}", instance);
 
-                    // check if we are both a manager
-                    if self.is_manager && properties.is_manager {
-                        log::error!("Found another manager {fullname}, ignoring...",);
+                // check if we know about this peer
+                if let Some(stored_props) = self.peer_props.get(&instance) {
+                    let sender_ip = sender_addr.ip().to_string();
+
+                    // verify that the sender IP matches the stored peer IP for sanity
+                    if stored_props.local_ip == sender_ip {
+                        self.peer_props.remove(&instance);
+                        log::info!("Removed {} (from: {})", instance, sender_ip);
                     } else {
-                        // add peer to the peer properties
-                        self.peer_props.insert(fullname.to_string(), properties);
+                        log::warn!(
+                            "Ignoring REMOVE due to IP mismatch {} (from {}, expected IP: {})",
+                            instance,
+                            sender_ip,
+                            stored_props.local_ip
+                        );
                     }
+                } else {
+                    log::warn!(
+                        "Received REMOVE for unknown peer {} (from {})",
+                        instance,
+                        sender_addr
+                    );
                 }
             }
-            ServiceEvent::ServiceRemoved(service_name, fullname) => {
-                if service_name.ends_with(Self::MDNS_SERVICE_TYPE) {
-                    log::warn!("Service {service_name} removed: {fullname}");
-                    self.peer_props.remove(fullname.as_str());
-                }
-            }
-            event => log::trace!("{event:?}"),
         }
     }
 
@@ -255,33 +177,71 @@ impl DnetService {
 
     /// Stops the service gracefully.
     pub async fn stop(&mut self) {
-        // only unregister if not passive (since we never registered)
-        if !self.is_passive {
-            self.mdns_unregister().await;
-        }
+        log::info!("Stopping service gracefully...");
+        if let Some(handle) = self.udp_handle.take() {
+            // broadcast removal notification if not passive
+            if !self.is_passive {
+                log::info!(
+                    "Broadcasting REMOVE notification for instance {}",
+                    self.properties.instance
+                );
+                if let Err(e) = handle
+                    .cmd_tx
+                    .send(UdpCommand::BroadcastRemove(
+                        self.properties.instance.clone(),
+                    ))
+                    .await
+                {
+                    log::error!("Failed to request removal broadcast: {e}");
+                } else {
+                    log::info!("Requested REMOVE notification successfully");
+                }
 
-        self.mdns_shutdown().await;
+                // delay to ensure the removal message is sent before shutdown
+                tokio::time::sleep(Duration::from_millis(1000)).await;
+            }
+
+            // request shutdown
+            if let Err(e) = handle.cmd_tx.send(UdpCommand::Shutdown).await {
+                log::warn!("UDP worker command channel closed before shutdown: {e}");
+            }
+
+            // wait for worker task to complete
+            match handle.task.await {
+                Ok(Ok(())) => {
+                    log::info!("UDP worker shut down cleanly");
+                }
+                Ok(Err(e)) => {
+                    log::error!("UDP worker returned error: {e}");
+                }
+                Err(e) => {
+                    log::error!("UDP worker join error: {e}");
+                }
+            }
+        }
     }
 
-    /// Updates the properties on mDNS.
-    #[inline]
-    async fn handle_refresh_and_update(&mut self) -> eyre::Result<()> {
-        // only update mDNS service if not passive
-        if !self.is_passive {
-            self.mdns_update_service().await;
-        }
-
-        Ok(())
-    }
-
-    /// Sets the busy status of the service and updates mDNS.
+    /// Sets the busy status of the service.
     pub async fn set_is_busy(&mut self, is_busy: bool) {
         // handle no-ops & passive
         if self.properties.is_busy == is_busy || self.is_passive {
             return;
         }
         self.properties.is_busy = is_busy;
-        self.mdns_update_service().await;
+
+        // send updated properties to UDP worker and request immediate broadcast
+        if let Some(handle) = self.udp_handle.as_ref() {
+            if let Err(e) = handle
+                .cmd_tx
+                .send(UdpCommand::UpdateProperties(self.properties.clone()))
+                .await
+            {
+                log::warn!("Failed to send UpdateProperties to UDP worker: {e}");
+            }
+            if let Err(e) = handle.cmd_tx.send(UdpCommand::BroadcastNow).await {
+                log::debug!("Failed to request immediate broadcast: {e}");
+            }
+        }
 
         log::debug!("Set is_busy to {is_busy}");
     }

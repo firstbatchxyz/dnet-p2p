@@ -49,7 +49,7 @@ pub struct ThunderboltData {
     pub instances: Vec<(ThunderboltInstance, Vec<ThunderboltInstance>)>,
 }
 
-// FIXME: how to learn which domain_uuid belongs to which host?
+// FIXME: better handling log when there are no connections needed
 
 impl ThunderboltData {
     pub fn new_from_slice(data: &[u8]) -> eyre::Result<Self> {
@@ -433,7 +433,9 @@ mod tests {
         assert!(tb_info.is_ok());
 
         // println!("{:#?}", tb_info);
-        // println!("{}", serde_json::to_string_pretty(&tb_info).unwrap());
-        // println!("{:#?}", serde_txtrecord::to_txt_records(&tb_info).unwrap());
+        // println!(
+        //     "{}",
+        //     serde_json::to_string_pretty(&tb_info.unwrap()).unwrap()
+        // );
     }
 }

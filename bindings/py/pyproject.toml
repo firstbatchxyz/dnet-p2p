@@ -1,6 +1,6 @@
 [project]
 name = "dnet-p2p"
-version = "0.1.10"
+version = "0.1.12"
 description = "Python FFI wrapper for dnet-p2p library"
 authors = [{ name = "erhant", email = "erhan@dria.co" }]
 requires-python = ">=3.10"
