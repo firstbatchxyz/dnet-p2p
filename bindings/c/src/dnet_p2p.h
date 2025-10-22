@@ -16,18 +16,16 @@ extern void dnet_p2p_enable_logs(void);
 /**
  * @brief Create a new dnet instance
  * @param instance_name name of the dnet instance, used for logging
- * @param hostname hostname to bind to, e.g. from `gethostname()`
- * @param host host address for the service
  * @param server_port port number for the HTTP server
  * @param shard_port port number for the shard service
  * @param is_manager if true, the instance will run in manager mode, otherwise
  * in worker mode
- * @param is_passive if true, the instance will only monitor (not register to mDNS)
+ * @param is_passive if true, the instance will only monitor (not register to
+ * mDNS)
  * @return `dnet_p2p_t*` pointer to the `dnet` instance
  */
-extern dnet_p2p_t *dnet_p2p_new(const char *instance_name, const char *hostname,
-                                const char *host, uint16_t server_port,
-                                uint16_t shard_port, bool is_manager, 
+extern dnet_p2p_t *dnet_p2p_new(const char *instance_name, uint16_t server_port,
+                                uint16_t shard_port, bool is_manager,
                                 bool is_passive);
 
 /**

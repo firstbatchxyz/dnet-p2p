@@ -433,7 +433,9 @@ mod tests {
         assert!(tb_info.is_ok());
 
         // println!("{:#?}", tb_info);
-        // println!("{}", serde_json::to_string_pretty(&tb_info).unwrap());
-        // println!("{:#?}", serde_txtrecord::to_txt_records(&tb_info).unwrap());
+        // println!(
+        //     "{}",
+        //     serde_json::to_string_pretty(&tb_info.unwrap()).unwrap()
+        // );
     }
 }

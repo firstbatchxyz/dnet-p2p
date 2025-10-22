@@ -17,12 +17,14 @@ pub struct UdpDiscovery {
     port: u16,
     /// Broadcast address
     broadcast_addr: SocketAddr,
+    /// Broadcast interval duration
+    pub broadcast_interval: Duration,
+    /// Cleanup interval duration
+    pub cleanup_interval: Duration,
     /// Last seen time for each peer (keyed by their instance name)
     peer_last_seen: HashMap<String, Instant>,
     /// Timeout duration for considering a peer as offline
     peer_timeout: Duration,
-    /// Whether UDP discovery is enabled
-    enabled: bool,
 }
 
 impl UdpDiscovery {
@@ -37,28 +39,6 @@ impl UdpDiscovery {
 
     /// Creates a new UDP discovery instance
     pub async fn new() -> eyre::Result<Self> {
-        // check if UDP discovery is enabled
-        let enabled = env::var("DNET_P2P_UDP_ENABLED")
-            .ok()
-            .and_then(|val| val.parse::<bool>().ok())
-            .unwrap_or(true);
-
-        if !enabled {
-            log::info!("UDP discovery is disabled");
-            // return a dummy instance
-            let socket = UdpSocket::bind("0.0.0.0:0")
-                .await
-                .wrap_err("failed to bind UDP socket")?;
-            return Ok(Self {
-                socket,
-                port: 0,
-                broadcast_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::BROADCAST), 0),
-                peer_last_seen: HashMap::new(),
-                peer_timeout: Duration::from_secs(Self::DEFAULT_PEER_TIMEOUT),
-                enabled: false,
-            });
-        }
-
         // load configuration from environment variables
         let port = env::var("DNET_P2P_UDP_PORT")
             .ok()
@@ -83,6 +63,12 @@ impl UdpDiscovery {
 
         let broadcast_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::BROADCAST), port);
 
+        let broadcast_interval_secs = env::var("DNET_P2P_UDP_BROADCAST_INTERVAL")
+            .ok()
+            .and_then(|val| val.parse::<u64>().ok())
+            .unwrap_or(Self::DEFAULT_BROADCAST_INTERVAL);
+        let broadcast_interval = Duration::from_secs(broadcast_interval_secs);
+
         log::info!(
             "UDP discovery initialized on port {} (broadcast to {})",
             port,
@@ -93,25 +79,11 @@ impl UdpDiscovery {
             socket,
             port,
             broadcast_addr,
+            broadcast_interval,
             peer_last_seen: HashMap::new(),
             peer_timeout: Duration::from_secs(peer_timeout_secs),
-            enabled,
+            cleanup_interval: Duration::from_secs(2),
         })
-    }
-
-    /// Returns whether UDP discovery is enabled
-    pub fn is_enabled(&self) -> bool {
-        self.enabled
-    }
-
-    /// Returns the broadcast interval duration from environment or default
-    pub fn get_broadcast_interval() -> Duration {
-        let interval_secs = env::var("DNET_P2P_UDP_BROADCAST_INTERVAL")
-            .ok()
-            .and_then(|val| val.parse::<u64>().ok())
-            .unwrap_or(Self::DEFAULT_BROADCAST_INTERVAL);
-
-        Duration::from_secs(interval_secs)
     }
 
     /// Broadcasts own service properties via UDP
@@ -119,10 +91,6 @@ impl UdpDiscovery {
         &self,
         properties: &DnetServiceProperties,
     ) -> eyre::Result<()> {
-        if !self.enabled {
-            return Ok(());
-        }
-
         // serialize properties to JSON
         let json = serde_json::to_string(properties)
             .wrap_err("failed to serialize service properties to JSON")?;
@@ -151,10 +119,6 @@ impl UdpDiscovery {
     pub async fn receive_announcement(
         &mut self,
     ) -> eyre::Result<Option<(DnetServiceProperties, SocketAddr)>> {
-        if !self.enabled {
-            return Ok(None);
-        }
-
         let mut buf = vec![0u8; 65535]; // max UDP packet size
 
         // try to receive data (non-blocking via tokio)
@@ -198,10 +162,6 @@ impl UdpDiscovery {
     ///
     /// Returns a list of instance names that timed out
     pub fn cleanup_stale_peers(&mut self) -> Vec<String> {
-        if !self.enabled {
-            return Vec::new();
-        }
-
         let now = Instant::now();
         let mut timed_out = Vec::new();
 
@@ -222,11 +182,5 @@ impl UdpDiscovery {
         });
 
         timed_out
-    }
-
-    /// Returns the peer timeout check interval (should be checked periodically)
-    pub fn get_cleanup_interval() -> Duration {
-        // check for stale peers every 2 seconds
-        Duration::from_secs(2)
     }
 }

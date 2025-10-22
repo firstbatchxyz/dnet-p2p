@@ -1,5 +1,4 @@
 from time import sleep
-from socket import gethostname
 from src.dnet_p2p import DnetP2P
 from secrets import token_hex
 import sys
@@ -9,21 +8,18 @@ def main():
     is_manager = "-m" in sys.argv
     is_passive = "-p" in sys.argv
     instance = token_hex(12)
-    hostname = gethostname()
 
     if is_passive:
-        print(f"Starting passive monitor {instance} at {hostname}")
+        print(f"Starting passive monitor {instance}")
     elif is_manager:
-        print(f"Starting manager {instance} at {hostname}")
+        print(f"Starting manager {instance}")
     else:
-        print(f"Starting worker {instance} at {hostname}")
+        print(f"Starting worker {instance}")
 
     with DnetP2P("../../lib") as dnet:
         dnet.enable_logs()  # enables rust logging
         dnet.create_instance(
             instance,
-            hostname,
-            "localhost",  # host
             8080,  # server_port
             50501,  # shard_port
             is_manager=is_manager,

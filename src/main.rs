@@ -1,6 +1,5 @@
 use clap::Parser;
 use dnet_p2p::DnetService;
-use gethostname::gethostname;
 
 use tokio_util::sync::CancellationToken;
 #[derive(Parser)]
@@ -39,20 +38,12 @@ async fn main() -> eyre::Result<()> {
         .as_nanos()
         .to_string();
 
-    // use system hostname
-    let hostname = gethostname()
-        .into_string()
-        .map(|name| format!("{name}-dnet"))
-        .expect("`gethostname` failed");
-
     // create the service with UDP discovery
     let mut service = DnetService::new(
         cancellation,
         instance_name,
-        hostname,
-        "127.0.0.1".to_string(), // we dont care about the address in this example
-        8080,                    // dummy HTTP server port
-        50501,                   // dummy shard port
+        8080,  // dummy HTTP server port
+        50501, // dummy shard port
         args.is_manager,
         args.is_passive,
     )

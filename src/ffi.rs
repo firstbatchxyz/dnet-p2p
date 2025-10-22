@@ -63,21 +63,17 @@ pub extern "C" fn dnet_p2p_enable_logs() {
 #[unsafe(no_mangle)]
 pub extern "C" fn dnet_p2p_new(
     instance_c: *const ffi::c_char,
-    hostname_c: *const ffi::c_char,
-    host_c: *const ffi::c_char,
     server_port: u16,
     shard_port: u16,
     is_manager: bool,
     is_passive: bool,
 ) -> *mut DnetService {
-    let [instance, hostname, host] = [instance_c, hostname_c, host_c].map(|ptr| {
-        unsafe {
-            assert!(!ptr.is_null());
-            ffi::CStr::from_ptr(ptr)
-        }
-        .to_str()
-        .unwrap()
-    });
+    let instance = unsafe {
+        assert!(!instance_c.is_null());
+        ffi::CStr::from_ptr(instance_c)
+    }
+    .to_str()
+    .expect("could not convert instance to str");
 
     // create a runtime to handle the async call
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -90,8 +86,6 @@ pub extern "C" fn dnet_p2p_new(
             DnetService::new(
                 CancellationToken::new(),
                 instance.to_string(),
-                hostname.to_string(),
-                host.to_string(),
                 server_port,
                 shard_port,
                 is_manager,
