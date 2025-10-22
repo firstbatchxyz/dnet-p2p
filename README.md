@@ -1,6 +1,6 @@
 # dnet p2p
 
-dnet p2p is a shared library that add mDNS peer-to-peer connectibility. It exposes two modes (inspired from MPI terms):
+dnet p2p is a shared library that adds LAN peer-to-peer discovery. It exposes two modes (inspired from MPI terms):
 
 - **Manager**: the manager of the local network, is able to dispatch tasks to all other. There can only be one manager.
 - **Worker**: every non-manager is expected to be a worker, connected via the LAN to serve their compute power to the manager.

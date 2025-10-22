@@ -8,7 +8,7 @@ struct Cli {
     /// Run as manager instead of worker
     #[arg(short = 'm', long = "manager", default_value_t = false)]
     is_manager: bool,
-    /// Run in passive mode (monitor only, don't register to mDNS)
+    /// Run in passive mode (monitor only, don't register)
     #[arg(short = 'p', long = "passive", default_value_t = false)]
     is_passive: bool,
 }
@@ -18,7 +18,7 @@ async fn main() -> eyre::Result<()> {
     env_logger::builder()
         .format_timestamp_millis()
         .filter(None, log::LevelFilter::Off)
-        .filter_module("dnet_p2p", log::LevelFilter::Debug)
+        .filter_module("dnet_p2p", log::LevelFilter::Info)
         .parse_default_env()
         .init();
 
@@ -31,12 +31,18 @@ async fn main() -> eyre::Result<()> {
 
     let args = Cli::parse();
 
-    // get time just for the sake of having a unique instance name
-    let instance_name = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos()
-        .to_string();
+    // get time just for the sake of having a unique instance name (as hex)
+    let instance_name = format!(
+        "{:x}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    )
+    .chars()
+    .rev()
+    .take(12)
+    .collect();
 
     // create the service with UDP discovery
     let mut service = DnetService::new(

@@ -2,7 +2,10 @@ use eyre::Context;
 use std::collections::HashMap;
 use tokio_util::sync::CancellationToken;
 
-use super::{udp::UdpDiscovery, DnetServiceProperties};
+use super::{
+    udp::{UdpDiscovery, UdpMessage},
+    DnetServiceProperties,
+};
 use crate::utils::get_local_network_ip;
 
 /// A `dnet` service.
@@ -23,7 +26,7 @@ pub struct DnetService {
     pub(crate) udp: UdpDiscovery,
     /// Whether this service is a manager or not.
     pub(crate) is_manager: bool,
-    /// Whether this service is passive (monitors only, doesn't register to mDNS).
+    /// Whether this service is passive (monitors only, doesn't register).
     pub(crate) is_passive: bool,
 }
 
@@ -76,7 +79,11 @@ impl DnetService {
         let mut cleanup_interval = tokio::time::interval(self.udp.cleanup_interval);
         cleanup_interval.tick().await; // wait for the first tick
 
-        log::info!("Starting UDP discovery loop...");
+        log::info!(
+            "Starting UDP discovery loop on port {} for instance {}",
+            self.udp.port,
+            self.properties.instance
+        );
         loop {
             tokio::select! {
               // broadcast own properties
@@ -97,17 +104,17 @@ impl DnetService {
                   }
               },
 
-              // receive peer announcements
-              announcement = self.udp.receive_announcement() => {
-                  match announcement {
-                      Ok(Some((properties, sender_addr))) => {
-                          self.handle_udp_announcement(properties, sender_addr);
+              // receive peer messages (update or remove)
+              message = self.udp.receive_announcement() => {
+                  match message {
+                      Ok(Some((msg, sender_addr))) => {
+                          self.handle_udp_message(msg, sender_addr);
                       },
                       Ok(None) => {
                           // no data available, continue
                       },
                       Err(e) => {
-                          log::error!("Error receiving UDP announcement: {e}");
+                          log::error!("Error receiving UDP message: {e}");
                       }
                   }
               },
@@ -121,37 +128,66 @@ impl DnetService {
         Ok(())
     }
 
-    /// Handles a UDP announcement from a peer
+    /// Handles a UDP message from a peer (Update or Remove)
     #[inline]
-    fn handle_udp_announcement(
-        &mut self,
-        properties: DnetServiceProperties,
-        sender_addr: std::net::SocketAddr,
-    ) {
-        let instance = properties.instance.clone();
+    fn handle_udp_message(&mut self, message: UdpMessage, sender_addr: std::net::SocketAddr) {
+        match message {
+            UdpMessage::Update(properties) => {
+                let instance = properties.instance.clone();
 
-        // check if this is us (only relevant if not passive)
-        if !self.is_passive && instance == self.properties.instance {
-            log::debug!("Received our own announcement from {}", sender_addr);
-            // update yourself in peer props
-            self.peer_props
-                .insert(instance.clone(), self.properties.clone());
-            return;
-        }
+                // check if this is us (only relevant if not passive)
+                if !self.is_passive && instance == self.properties.instance {
+                    log::debug!("Received our own announcement from {}", sender_addr);
+                    // update yourself in peer props
+                    self.peer_props
+                        .insert(instance.clone(), self.properties.clone());
+                    return;
+                }
 
-        log::debug!(
-            "Processing announcement from {}: {:#?}",
-            instance,
-            properties
-        );
+                log::debug!("Processing UPDATE from {}: {:#?}", instance, properties);
 
-        // check if we are both a manager
-        if self.is_manager && properties.is_manager {
-            log::error!("Found another manager {instance} at {sender_addr}, ignoring...");
-        } else {
-            // add peer to the peer properties
-            self.peer_props.insert(instance.clone(), properties);
-            log::info!("Added/updated peer: {}", instance);
+                // check if we are both a manager
+                if self.is_manager && properties.is_manager {
+                    log::error!("Found another manager {instance} at {sender_addr}, ignoring...");
+                } else {
+                    // add peer to the peer properties
+                    self.peer_props.insert(instance.clone(), properties);
+                    log::info!("Added/updated peer: {}", instance);
+                }
+            }
+            UdpMessage::Remove(instance) => {
+                log::info!("Processing REMOVE for instance: {}", instance);
+
+                // check if we know about this peer
+                if let Some(stored_props) = self.peer_props.get(&instance) {
+                    let sender_ip = sender_addr.ip().to_string();
+
+                    log::debug!(
+                        "REMOVE verification - sender IP: '{}', stored local_ip: '{}'",
+                        sender_ip,
+                        stored_props.local_ip
+                    );
+
+                    // verify that the sender IP matches the stored peer IP for sanity
+                    if stored_props.local_ip == sender_ip {
+                        self.peer_props.remove(&instance);
+                        log::info!("✓ Removed peer '{}' (verified IP: {})", instance, sender_ip);
+                    } else {
+                        log::warn!(
+                            "✗ Ignoring REMOVE for '{}' from {} (expected IP: {})",
+                            instance,
+                            sender_ip,
+                            stored_props.local_ip
+                        );
+                    }
+                } else {
+                    log::warn!(
+                        "Received REMOVE for unknown peer '{}' from {}",
+                        instance,
+                        sender_addr
+                    );
+                }
+            }
         }
     }
 
@@ -163,12 +199,21 @@ impl DnetService {
     /// Stops the service gracefully.
     pub async fn stop(&mut self) {
         log::info!("Stopping service gracefully...");
-        // UDP doesn't require explicit shutdown, socket will be dropped
-        // // only unregister if not passive (since we never registered)
-        // if !self.is_passive {
-        //     self.mdns_unregister().await;
-        // }
-        // self.mdns_shutdown().await;
+
+        // broadcast removal notification if not passive
+        if !self.is_passive {
+            log::info!(
+                "Broadcasting REMOVE notification for instance '{}'",
+                self.properties.instance
+            );
+            if let Err(e) = self.udp.broadcast_remove(&self.properties.instance).await {
+                log::error!("Failed to broadcast removal notification: {e}");
+            } else {
+                log::info!("REMOVE notification sent successfully");
+            }
+            // delay to ensure the removal message is sent before we close the socket
+            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+        }
     }
 
     /// Sets the busy status of the service.
@@ -178,7 +223,9 @@ impl DnetService {
             return;
         }
         self.properties.is_busy = is_busy;
-        // Property will be broadcast on next interval
+
+        // property will be broadcast on next interval
+        // TODO: do the broadcast immediately maybe?
         log::debug!("Set is_busy to {is_busy}");
     }
 }

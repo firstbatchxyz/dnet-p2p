@@ -9,15 +9,17 @@ def main():
     is_passive = "-p" in sys.argv
     instance = token_hex(12)
 
-    if is_passive:
-        print(f"Starting passive monitor {instance}")
-    elif is_manager:
-        print(f"Starting manager {instance}")
-    else:
-        print(f"Starting worker {instance}")
-
     with DnetP2P("../../lib") as dnet:
-        dnet.enable_logs()  # enables rust logging
+        # print version
+        print(f"dnet-p2p version: {dnet.version()}")
+
+        if is_passive:
+            print(f"Starting passive monitor {instance}")
+        elif is_manager:
+            print(f"Starting manager {instance}")
+        else:
+            print(f"Starting worker {instance}")
+
         dnet.create_instance(
             instance,
             8080,  # server_port
@@ -25,7 +27,7 @@ def main():
             is_manager=is_manager,
             is_passive=is_passive,
         )
-        dnet.start()
+        # dnet.start(loglevel="info")
 
         print("Dnet service started. Press Ctrl+C to stop.")
         try:
@@ -33,8 +35,6 @@ def main():
             if not is_manager:
                 # show own properties for shard
                 properties = dnet.get_own_properties()
-                fullname = dnet.fullname()
-                print(fullname)
                 print(properties.model_dump_json(indent=2))
 
             while True:

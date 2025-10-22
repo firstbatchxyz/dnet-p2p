@@ -10,9 +10,6 @@ class RawProperties(BaseModel):
     """Indicates that the device is busy (e.g. doing an inference)."""
     instance: str
     """Instance name, expected to be unique per device, but not enforced."""
-
-    host: str
-    """Host that this device is bound to, usually 0.0.0.0."""
     server_port: int
     """Port that the HTTP server is bound to."""
     shard_port: int
