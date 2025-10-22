@@ -10,8 +10,9 @@ from .manual import load_manual_devices, merge_device_mappings
 from .thunderbolt import (
     ThunderboltData,
     ThunderboltInstance,
+    ThunderboltConnection,
     discover_all_thunderbolt_connections,
-    discover_thunderbolt_connection
+    discover_thunderbolt_connection,
 )
 
 __all__ = [
@@ -25,6 +26,7 @@ __all__ = [
     ## thunderbolt.py
     "ThunderboltData",
     "ThunderboltInstance",
+    "ThunderboltConnection",
     "discover_all_thunderbolt_connections",
-    "discover_thunderbolt_connection"
+    "discover_thunderbolt_connection",
 ]

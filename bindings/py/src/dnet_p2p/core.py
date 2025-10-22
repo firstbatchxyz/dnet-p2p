@@ -45,7 +45,7 @@ class DnetP2P:
                          will attempt to find the library automatically from
                          relative `lib` folder.
         """
-        self._lib = self._load_library(library_dir)
+        self._lib: ctypes.CDLL = self._load_library(library_dir)
         self._setup_function_signatures()
         self._service_ptr = None
         self._handle_ptr = None
@@ -363,9 +363,7 @@ class DnetP2P:
         )
 
         if result < 0:
-            raise DnetP2PError(
-                f"Failed to get own properties (error code: {result})"
-            )
+            raise DnetP2PError(f"Failed to get own properties (error code: {result})")
 
         # get the buffer up to the first null terminator
         properties_bytes = buffer.raw.rstrip(b"\x00")
