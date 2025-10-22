@@ -45,7 +45,7 @@ async fn main() -> eyre::Result<()> {
         .map(|name| format!("{name}-dnet"))
         .expect("`gethostname` failed");
 
-    // register the service with mDNS
+    // create the service with UDP discovery
     let mut service = DnetService::new(
         cancellation,
         instance_name,
@@ -55,7 +55,8 @@ async fn main() -> eyre::Result<()> {
         50501,                   // dummy shard port
         args.is_manager,
         args.is_passive,
-    )?;
+    )
+    .await?;
     let handle_for_service = tokio::spawn(async move { service.start().await });
 
     if let Err(err) = handle_for_service.await {

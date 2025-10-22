@@ -6,8 +6,11 @@ pub use core::DnetService;
 mod properties;
 pub use properties::DnetServiceProperties;
 
-/// mDNS specific functions.
-mod mdns;
+/// UDP discovery module.
+pub(crate) mod udp;
+
+// /// mDNS specific functions.
+// mod mdns;
 
 /// Thunderbolt-specific info.
 mod thunderbolt;

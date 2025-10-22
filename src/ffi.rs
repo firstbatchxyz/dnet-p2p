@@ -79,17 +79,27 @@ pub extern "C" fn dnet_p2p_new(
         .unwrap()
     });
 
-    let service = DnetService::new(
-        CancellationToken::new(),
-        instance.to_string(),
-        hostname.to_string(),
-        host.to_string(),
-        server_port,
-        shard_port,
-        is_manager,
-        is_passive,
-    )
-    .expect("Failed to create DnetService");
+    // create a runtime to handle the async call
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("could not create runtime");
+
+    let service = rt
+        .block_on(async {
+            DnetService::new(
+                CancellationToken::new(),
+                instance.to_string(),
+                hostname.to_string(),
+                host.to_string(),
+                server_port,
+                shard_port,
+                is_manager,
+                is_passive,
+            )
+            .await
+        })
+        .expect("Failed to create DnetService");
     Box::into_raw(Box::new(service))
 }
 
