@@ -10,8 +10,8 @@ def main():
     instance = token_hex(12)
 
     ## uncomment to your taste ##
-    # with DnetP2P("../../lib") as dnet:
-    with DnetP2P("../../target/debug") as dnet:
+    with DnetP2P("../../lib") as dnet:
+        # with DnetP2P("../../target/debug") as dnet:
         # with DnetP2P("../../target/release") as dnet:
         # print version
         print(f"dnet-p2p version: {dnet.version()}")
