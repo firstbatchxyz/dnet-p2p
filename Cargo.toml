@@ -3,7 +3,8 @@ name = "dnet-p2p"
 version = "0.1.0"
 description = "dnet mDNS-based device discovery"
 edition = "2021"
-authors = ["erhant"]
+license = "APACHE-2.0"
+authors = ["erhant <erhan@dria.co>"]
 
 [lib]
 crate-type = [
