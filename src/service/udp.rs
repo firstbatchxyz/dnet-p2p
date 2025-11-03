@@ -73,6 +73,8 @@ pub struct UdpDiscovery {
     peer_last_seen: HashMap<String, Instant>,
     /// Timeout duration for considering a peer as offline
     peer_timeout: Duration,
+    /// Socket buffer (created once to avoid reallocations)
+    socket_buf: Vec<u8>,
 }
 
 impl UdpDiscovery {
@@ -85,6 +87,9 @@ impl UdpDiscovery {
 
     /// Default broadcast interval in seconds
     pub const DEFAULT_BROADCAST_INTERVAL: u64 = 3;
+
+    /// Default cleanup interval in seconds
+    pub const DEFAULT_CLEANUP_INTERVAL: u64 = 5;
 
     /// Default peer timeout in seconds
     ///
@@ -132,11 +137,16 @@ impl UdpDiscovery {
             .wrap_err("failed to enable broadcast")?;
 
         let broadcast_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::BROADCAST), port);
+
         let broadcast_interval_secs = env::var("DNET_P2P_UDP_BROADCAST_INTERVAL")
             .ok()
             .and_then(|val| val.parse::<u64>().ok())
             .unwrap_or(Self::DEFAULT_BROADCAST_INTERVAL);
-        let broadcast_interval = Duration::from_secs(broadcast_interval_secs);
+
+        let cleanup_interval_secs = env::var("DNET_P2P_UDP_CLEANUP_INTERVAL")
+            .ok()
+            .and_then(|val| val.parse::<u64>().ok())
+            .unwrap_or(Self::DEFAULT_CLEANUP_INTERVAL);
 
         log::info!(
             "UDP discovery initialized on port {} (broadcast to {})",
@@ -146,12 +156,13 @@ impl UdpDiscovery {
 
         Ok(Self {
             socket,
+            socket_buf: vec![0u8; 65535], // max UDP packet size
             port,
             broadcast_addr,
-            broadcast_interval,
             peer_last_seen: HashMap::new(),
+            broadcast_interval: Duration::from_secs(broadcast_interval_secs),
+            cleanup_interval: Duration::from_secs(cleanup_interval_secs),
             peer_timeout: Duration::from_secs(peer_timeout_secs),
-            cleanup_interval: Duration::from_secs(2),
         })
     }
 
@@ -221,10 +232,8 @@ impl UdpDiscovery {
     /// Returns `Some((message, sender_addr))` if a valid message was received,
     /// or `None` if the operation would block or no data is available.
     pub async fn receive_announcement(&mut self) -> eyre::Result<Option<(UdpMessage, SocketAddr)>> {
-        let mut buf = vec![0u8; 65535]; // max UDP packet size
-
         // try to receive data (non-blocking via tokio)
-        match self.socket.recv_from(&mut buf).await {
+        match self.socket.recv_from(&mut self.socket_buf).await {
             Ok((len, sender_addr)) => {
                 log::debug!("Received {} bytes from {}", len, sender_addr);
 
@@ -239,14 +248,14 @@ impl UdpDiscovery {
                 }
 
                 // validate magic word
-                if &buf[..Self::MAGIC_WORD.len()] != Self::MAGIC_WORD {
+                if &self.socket_buf[..Self::MAGIC_WORD.len()] != Self::MAGIC_WORD {
                     log::warn!("Ignoring packet from {} (invalid magic word)", sender_addr);
                     return Ok(None);
                 }
 
                 // extract message type
-                let msg_type = buf[Self::MAGIC_WORD.len()];
-                let payload = &buf[Self::MAGIC_WORD.len() + 1..len];
+                let msg_type = self.socket_buf[Self::MAGIC_WORD.len()];
+                let payload = &self.socket_buf[Self::MAGIC_WORD.len() + 1..len];
 
                 match msg_type {
                     UdpMessage::MSG_TYPE_UPDATE => {
@@ -366,8 +375,6 @@ pub(crate) fn spawn_udp_task(
 
         loop {
             tokio::select! {
-                biased;
-
                 // commands from core
                 cmd = cmd_rx.recv() => {
                     match cmd {
