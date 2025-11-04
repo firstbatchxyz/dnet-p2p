@@ -5,7 +5,7 @@
 /// It specifically looks for private IPv4 addresses in `en` interfaces, picking the first one.
 pub fn get_local_network_ip() -> Option<(String, std::net::IpAddr)> {
     let mut en_ifs = local_ip_address::list_afinet_netifas()
-        .unwrap()
+        .unwrap() // TODO: handle better?
         .into_iter()
         .filter(|(name, addr)| name.starts_with("en") && addr.is_ipv4())
         .collect::<Vec<_>>();
